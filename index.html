@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 5.3.5
+  MIGO Web Controller | Version: 5.3.6
   Change Log:
+  [Jul 09, 2026 7:12 PM] Fix: Implement smart watchdog fallback to ensure conversational gestures work with custom/offline voices that do not support SpeechSynthesis onboundary events.
   [Jul 09, 2026 6:59 PM] Fix: Add timer-based speech gesture fallback on mobile devices to resolve missing conversational movements due to SpeechSynthesis.onboundary limitations on iOS/Android.
   [Jul 09, 2026 6:10 PM] Fix: Optimize AIONA Desk Companion UI responsiveness for mobile portrait devices by using side-by-side layout, smaller orb scaling, and hiding header button labels on small screens.
   [Jul 09, 2026 2:40 PM] New Feature: Add Continuous Conversation Mode toggle button and support auto-listening after finishing a response.
   [Jul 09, 2026 2:35 PM] Fix: Reset companion mode state to idle when speech finishes or errors, avoiding getting stuck in speaking mode when disconnected or when reaction finishes.
-  [Jul 07, 2026 10:01 PM] New Feature: Capture analog ports A, B, and C telemetry and feed them into AIONA system prompt for real-time sensor queries.
 -->
 
 <!DOCTYPE html>
@@ -6442,33 +6442,11 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           sendCmd('CMD:FACE:TALK');
         }, 850);
 
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        if (isMobile) {
-          // Mobile browsers frequently fail to fire onboundary events. Fall back to timer-based gestures during speech.
-          const wordsWithMetadata = [];
-          const wordRegex = /\b[a-zA-Z0-9']+\b[.,!?]?/g;
-          let match;
-          while ((match = wordRegex.exec(phoneticText)) !== null) {
-            const matchedText = match[0];
-            const word = matchedText.replace(/[.,!?]/g, '');
-            const puncMatch = matchedText.match(/[.,!?]$/);
-            const punctuation = puncMatch ? puncMatch[0] : '';
-            wordsWithMetadata.push({ word, punctuation });
-          }
-
-          let delayOffset = 0;
-          wordsWithMetadata.forEach((w) => {
-            setTimeout(() => {
-              if (aionaSpeechRunning && !aionaSequenceRunning) {
-                triggerWordGesture(w.word, w.punctuation);
-              }
-            }, delayOffset);
-            // Space words by average duration (e.g. 350ms)
-            delayOffset += 350;
-          });
-        } else {
-          utterance.onboundary = (event) => {
-            if (event.name === 'word' && !aionaSequenceRunning) {
+        let boundaryFired = false;
+        utterance.onboundary = (event) => {
+          if (event.name === 'word') {
+            boundaryFired = true;
+            if (!aionaSequenceRunning) {
               const charIndex = event.charIndex;
               const remainingText = phoneticText.slice(charIndex);
               const wordMatch = remainingText.match(/^([a-zA-Z0-9']+)/);
@@ -6480,8 +6458,36 @@ Choose the tag that best represents the tone of your text. Do not include any ot
                 triggerWordGesture(word, punctuation);
               }
             }
-          };
-        }
+          }
+        };
+
+        // Watchdog fallback for mobile or voices/browsers that do not fire onboundary events
+        setTimeout(() => {
+          if (!boundaryFired && aionaSpeechRunning) {
+            console.log("[Aiona Speech] Native boundary events not supported by this voice/browser. Falling back to timer-based gestures.");
+            const wordsWithMetadata = [];
+            const wordRegex = /\b[a-zA-Z0-9']+\b[.,!?]?/g;
+            let match;
+            while ((match = wordRegex.exec(phoneticText)) !== null) {
+              const matchedText = match[0];
+              const word = matchedText.replace(/[.,!?]/g, '');
+              const puncMatch = matchedText.match(/[.,!?]$/);
+              const punctuation = puncMatch ? puncMatch[0] : '';
+              wordsWithMetadata.push({ word, punctuation });
+            }
+
+            let delayOffset = 0;
+            wordsWithMetadata.forEach((w) => {
+              setTimeout(() => {
+                if (aionaSpeechRunning && !boundaryFired && !aionaSequenceRunning) {
+                  triggerWordGesture(w.word, w.punctuation);
+                }
+              }, delayOffset);
+              // Space words by average duration (e.g. 350ms)
+              delayOffset += 350;
+            });
+          }
+        }, 250);
 
         utterance.onend = () => {
           aionaSpeechRunning = false;
