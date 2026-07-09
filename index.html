@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 5.3.3
+  MIGO Web Controller | Version: 5.5.0
   Change Log:
-  [Jul 09, 2026 2:40 PM] New Feature: Add Continuous Conversation Mode toggle button and support auto-listening after finishing a response.
-  [Jul 09, 2026 2:35 PM] Fix: Reset companion mode state to idle when speech finishes or errors, avoiding getting stuck in speaking mode when disconnected or when reaction finishes.
-  [Jul 07, 2026 10:01 PM] New Feature: Capture analog ports A, B, and C telemetry and feed them into AIONA system prompt for real-time sensor queries.
-  [Jul 07, 2026 9:57 PM] New Feature: Inject real-time ultrasonic distance sensor telemetry directly into the AIONA system prompt so she can answer distance queries.
-  [Jul 07, 2026 9:48 PM] Fix: Use regex matchAll in sentence trimmer to correctly detect terminal punctuation inside quotes (e.g. song." While...).
+  [Jul 09, 2026 5:48 PM] New Feature: Add optional WebGPU vs WASM dropdown acceleration setting with dynamic dtype loading (fp16 vs q4).
+  [Jul 09, 2026 5:35 PM] Fix: Force WASM (CPU) speech device for Kokoro TTS to resolve WebGPU audio distortion (buzzing) on Chrome.
+  [Jul 09, 2026 5:32 PM] Fix: Attempt WebGPU acceleration for instant voice generation with automatic WASM fallback.
+  [Jul 09, 2026 5:22 PM] Fix: Correct CDN link to esm.sh and change initializer to KokoroTTS.from_pretrained to fix browser loading failure.
+  [Jul 09, 2026 5:15 PM] New Feature: Add optional premium Kokoro local TTS engine with voice model selection in settings.
 -->
 
 <!DOCTYPE html>
@@ -481,6 +481,57 @@
                 class="w-10 h-6 bg-slate-700 rounded-full p-0.5 transition-all relative flex items-center cursor-pointer">
                 <span class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
               </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Speech Synthesis Settings ────────────────────────── -->
+      <div class="mb-6">
+        <p class="text-[10px] text-purple-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
+          <i class="ph-bold ph-speaker-high text-xs"></i> Speech Synthesis Settings
+        </p>
+        <div class="bg-black/30 border border-white/10 rounded-xl p-4 space-y-3">
+          <!-- Speech Engine Dropdown -->
+          <div>
+            <label class="text-xs font-semibold text-white/80 block mb-1">TTS Voice Engine</label>
+            <select id="settingsSpeechEngine" onchange="changeSpeechEngine(this.value)"
+              class="w-full p-2.5 rounded-xl bg-black/40 border border-white/20 text-white text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all cursor-pointer text-center">
+              <option value="system">System Voice (Default - Fast & Free)</option>
+              <option value="kokoro">Premium Local Voice (Kokoro - Realtime AI)</option>
+            </select>
+            <p class="text-[9px] text-white/40 mt-1.5 leading-normal">
+              Premium voice runs a neural network directly in your browser. Needs internet only on first select (~80MB download).
+            </p>
+          </div>
+
+          <!-- Kokoro Settings Group (Hidden by default unless Kokoro selected) -->
+          <div id="kokoroSettingsGroup" class="hidden border-t border-white/5 pt-3 space-y-3">
+            <!-- Hardware Acceleration -->
+            <div>
+              <label class="text-xs font-semibold text-white/80 block mb-1">Hardware Acceleration</label>
+              <select id="settingsSpeechDevice" onchange="changeSpeechDevice(this.value)"
+                class="w-full p-2.5 rounded-xl bg-black/40 border border-white/20 text-white text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all cursor-pointer text-center">
+                <option value="wasm">WASM (CPU - Safe, Slow)</option>
+                <option value="webgpu">WebGPU (GPU - Blazing Fast)</option>
+              </select>
+              <p id="settingsDeviceWarning" class="text-[9px] text-white/40 mt-1 leading-normal">
+                WASM uses CPU (~40MB model). WebGPU uses GPU for instant speech (~160MB model).
+              </p>
+            </div>
+
+            <!-- Voice Model -->
+            <div>
+              <label class="text-xs font-semibold text-white/80 block mb-1">AI Voice Model</label>
+              <select id="settingsSpeechVoice" onchange="changeSpeechVoice(this.value)"
+                class="w-full p-2.5 rounded-xl bg-black/40 border border-white/20 text-white text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all cursor-pointer text-center">
+                <option value="af_bella">Bella (US Female - Default)</option>
+                <option value="af_sarah">Sarah (US Female)</option>
+                <option value="am_adam">Adam (US Male)</option>
+                <option value="am_michael">Michael (US Male)</option>
+                <option value="bf_emma">Emma (UK Female)</option>
+                <option value="bm_george">George (UK Male)</option>
+              </select>
             </div>
           </div>
         </div>
@@ -1707,6 +1758,9 @@
       dpadInvertLR: false,
       joyInvertFB: false,
       joyInvertLR: false,
+      speechEngine: "system",
+      speechVoice: "af_bella",
+      speechDevice: "wasm",
     };
     let aionaObstacleWarned = false;
     let aionaLastKnownDist = 999;
@@ -2941,6 +2995,10 @@
     }
 
     function speakOutLoud(text) {
+      if (v5Settings.speechEngine === 'kokoro') {
+        speakText(text);
+        return;
+      }
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel(); // Stop current speech to play new
         const utterance = new SpeechSynthesisUtterance(text);
@@ -5216,7 +5274,152 @@ ${JSON.stringify(workspaceState, null, 2)}
     }
 
     // --- TTS (Text-to-Speech) ---
-    function speakText(text) {
+    let currentKokoroSource = null;
+    let currentKokoroAudioCtx = null;
+    let kokoroModel = null;
+    let isKokoroLoading = false;
+
+    function stopKokoroSpeech() {
+      if (currentKokoroSource) {
+        try { currentKokoroSource.stop(); } catch (e) {}
+        currentKokoroSource = null;
+      }
+    }
+
+    function showAionaSpeechToast(msg, persist = false) {
+      let toast = document.getElementById('aionaSpeechToast');
+      if (toast) toast.remove();
+
+      toast = document.createElement('div');
+      toast.id = 'aionaSpeechToast';
+      toast.className = "fixed bottom-20 left-1/2 transform -translate-x-1/2 z-[200] bg-purple-600/90 backdrop-blur-md border border-purple-400 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 animate-fade-in";
+      toast.innerHTML = `
+        <i class="ph-bold ph-waveform text-sm animate-pulse text-purple-200"></i>
+        <span>${msg}</span>
+      `;
+      document.body.appendChild(toast);
+      if (!persist) {
+        setTimeout(() => {
+          if (toast) {
+            toast.classList.add('opacity-0');
+            toast.style.transition = 'opacity 0.5s ease';
+            setTimeout(() => toast.remove(), 500);
+          }
+        }, 3000);
+      }
+    }
+
+    async function preloadKokoroModel() {
+      if (kokoroModel || isKokoroLoading) return;
+      isKokoroLoading = true;
+
+      const device = v5Settings.speechDevice || "wasm";
+      const dtype = (device === "webgpu") ? "fp16" : "q4";
+      const modelSize = (device === "webgpu") ? "~160MB" : "~40MB";
+
+      showAionaSpeechToast(`Loading Kokoro model (${modelSize})...`, true);
+      try {
+        const { KokoroTTS } = await import("https://esm.sh/kokoro-js");
+        console.log(`Loading Kokoro TTS with device: ${device}, dtype: ${dtype}...`);
+        kokoroModel = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-ONNX", {
+          dtype: dtype,
+          device: device
+        });
+        const toast = document.getElementById('aionaSpeechToast');
+        if (toast) toast.remove();
+        showAionaSpeechToast("Kokoro TTS Engine Ready!");
+      } catch (err) {
+        console.error("Failed to preload Kokoro model:", err);
+        showAionaErrorNotification("Failed to load AI speech model. Check your internet connection.");
+        const toast = document.getElementById('aionaSpeechToast');
+        if (toast) toast.remove();
+      } finally {
+        isKokoroLoading = false;
+      }
+    }
+
+    async function playKokoroSpeech(text, voice, onStart, onBoundary, onEnd, onError) {
+      stopKokoroSpeech();
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+
+      try {
+        if (!kokoroModel) {
+          await preloadKokoroModel();
+          if (!kokoroModel) throw new Error("Model failed to load");
+        }
+
+        const cleanText = text.replace(/<blockly-suggestion>[^]*?<\/blockly-suggestion>/g, "").trim();
+        if (!cleanText) {
+          if (onEnd) onEnd();
+          return;
+        }
+
+        const phoneticText = cleanText.replace(/\bmigo\b/gi, "mee-go").replace(/\baiona\b/gi, "eye-oh-nuh");
+        const result = await kokoroModel.generate(phoneticText, { voice: voice });
+
+        if (!currentKokoroAudioCtx) {
+          currentKokoroAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (currentKokoroAudioCtx.state === 'suspended') {
+          await currentKokoroAudioCtx.resume();
+        }
+
+        const buffer = currentKokoroAudioCtx.createBuffer(1, result.audio.length, result.sampling_rate);
+        buffer.copyToChannel(result.audio, 0);
+
+        const source = currentKokoroAudioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(currentKokoroAudioCtx.destination);
+        currentKokoroSource = source;
+
+        if (onStart) onStart();
+
+        // Simulate word boundaries
+        const duration = result.audio.length / result.sampling_rate;
+        const textLen = phoneticText.length;
+        const phoneticWords = phoneticText.split(/\s+/);
+        let accumTime = 0;
+
+        phoneticWords.forEach((word) => {
+          const cleanWordMatch = word.match(/[a-zA-Z0-9']+/);
+          const cleanWord = cleanWordMatch ? cleanWordMatch[0] : "";
+          const puncMatch = word.match(/[.,!?]/);
+          const punctuation = puncMatch ? puncMatch[0] : "";
+          
+          const wordDuration = (word.length / textLen) * duration;
+          const wordTime = accumTime;
+          accumTime += wordDuration;
+
+          if (cleanWord) {
+            setTimeout(() => {
+              if (currentKokoroSource === source) {
+                if (onBoundary) onBoundary(cleanWord, punctuation);
+              }
+            }, wordTime * 1000);
+          }
+        });
+
+        source.onended = () => {
+          if (currentKokoroSource === source) {
+            currentKokoroSource = null;
+            if (onEnd) onEnd();
+          }
+        };
+
+        source.start(0);
+
+      } catch (err) {
+        console.error("Kokoro TTS Error:", err);
+        if (onError) onError(err);
+      }
+    }
+
+    async function speakText(text) {
+      if (v5Settings.speechEngine === 'kokoro') {
+        await playKokoroSpeech(text, v5Settings.speechVoice || "af_bella");
+        return;
+      }
+
       if (!window.speechSynthesis) return;
       window.speechSynthesis.cancel();
 
@@ -5346,6 +5549,7 @@ ${JSON.stringify(workspaceState, null, 2)}
       // Stop all recognition
       stopAionaSpeechEngine();
 
+      stopKokoroSpeech();
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
@@ -5627,6 +5831,7 @@ ${JSON.stringify(workspaceState, null, 2)}
     }
 
     function aionaTriggerManualSpeech() {
+      stopKokoroSpeech();
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
@@ -6421,100 +6626,104 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       aionaKeepArmPersisted = false;
 
       // Speech synthesis trigger (dialogue plays first)
-      if (ttsEnabled && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
+      if (ttsEnabled) {
+        if (v5Settings.speechEngine === 'kokoro') {
+          playAionaSpeechKokoro(text, commands, emotion, userInput);
+        } else if (window.speechSynthesis) {
+          window.speechSynthesis.cancel();
 
-        const phoneticText = text.replace(/\bmigo\b/gi, "mee-go").replace(/\baiona\b/gi, "eye-oh-nuh");
-        const utterance = new SpeechSynthesisUtterance(phoneticText);
+          const phoneticText = text.replace(/\bmigo\b/gi, "mee-go").replace(/\baiona\b/gi, "eye-oh-nuh");
+          const utterance = new SpeechSynthesisUtterance(phoneticText);
 
-        // Prevent Chrome SpeechSynthesis garbage collection bug
-        window.activeAionaUtterance = utterance;
+          // Prevent Chrome SpeechSynthesis garbage collection bug
+          window.activeAionaUtterance = utterance;
 
-        const voices = window.speechSynthesis.getVoices();
-        const englishVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
-        if (englishVoice) utterance.voice = englishVoice;
-        utterance.rate = 1.02; utterance.pitch = 1.25;
+          const voices = window.speechSynthesis.getVoices();
+          const englishVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
+          if (englishVoice) utterance.voice = englishVoice;
+          utterance.rate = 1.02; utterance.pitch = 1.25;
 
-        aionaSpeechRunning = true;
-        if (aionaTalkPulseInterval) clearInterval(aionaTalkPulseInterval);
-        sendCmd('CMD:FACE:TALK'); // Send immediately to start mouth animation
-        aionaTalkPulseInterval = setInterval(() => {
-          sendCmd('CMD:FACE:TALK');
-        }, 850);
+          aionaSpeechRunning = true;
+          if (aionaTalkPulseInterval) clearInterval(aionaTalkPulseInterval);
+          sendCmd('CMD:FACE:TALK'); // Send immediately to start mouth animation
+          aionaTalkPulseInterval = setInterval(() => {
+            sendCmd('CMD:FACE:TALK');
+          }, 850);
 
-        utterance.onboundary = (event) => {
-          if (event.name === 'word' && !aionaSequenceRunning) {
-            const charIndex = event.charIndex;
-            const remainingText = phoneticText.slice(charIndex);
-            const wordMatch = remainingText.match(/^([a-zA-Z0-9']+)/);
-            if (wordMatch) {
-              const word = wordMatch[1];
-              const textAfterWord = remainingText.slice(word.length);
-              const puncMatch = textAfterWord.match(/^([.,!?])/);
-              const punctuation = puncMatch ? puncMatch[1] : '';
-              triggerWordGesture(word, punctuation);
-            }
-          }
-        };
-
-        utterance.onend = () => {
-          aionaSpeechRunning = false;
-          window.activeAionaUtterance = null;
-          if (aionaTalkPulseInterval) {
-            clearInterval(aionaTalkPulseInterval);
-            aionaTalkPulseInterval = null;
-          }
-
-          // Only reset face and state to idle if the sequence and reaction are also finished!
-          if (!aionaSequenceRunning && !aionaReactionRunning && aionaState === 'speaking') {
-            if (commands && commands.length > 0) {
-              sendCmd('CMD:FACE:IDLE');
-              smoothLowerArm();
-              if (aionaContinuousActive) {
-                aionaTriggerManualSpeech();
-              } else {
-                setAionaState('idle');
-                if (aionaWakeWordActive) startAionaWakeWordScanner();
+          utterance.onboundary = (event) => {
+            if (event.name === 'word' && !aionaSequenceRunning) {
+              const charIndex = event.charIndex;
+              const remainingText = phoneticText.slice(charIndex);
+              const wordMatch = remainingText.match(/^([a-zA-Z0-9']+)/);
+              if (wordMatch) {
+                const word = wordMatch[1];
+                const textAfterWord = remainingText.slice(word.length);
+                const puncMatch = textAfterWord.match(/^([.,!?])/);
+                const punctuation = puncMatch ? puncMatch[1] : '';
+                triggerWordGesture(word, punctuation);
               }
-            } else {
-              sendCmd('CMD:FACE:IDLE');
-              aionaDoEmotionPhysicalReactions(emotion, userInput);
             }
-          }
-        };
+          };
 
-        utterance.onerror = () => {
-          aionaSpeechRunning = false;
-          window.activeAionaUtterance = null;
-          if (aionaTalkPulseInterval) {
-            clearInterval(aionaTalkPulseInterval);
-            aionaTalkPulseInterval = null;
-          }
+          utterance.onend = () => {
+            aionaSpeechRunning = false;
+            window.activeAionaUtterance = null;
+            if (aionaTalkPulseInterval) {
+              clearInterval(aionaTalkPulseInterval);
+              aionaTalkPulseInterval = null;
+            }
 
-          // Only reset face and state to idle if the sequence and reaction are also finished!
-          if (!aionaSequenceRunning && !aionaReactionRunning && aionaState === 'speaking') {
-            if (commands && commands.length > 0) {
-              sendCmd('CMD:FACE:IDLE');
-              smoothLowerArm();
-              if (aionaContinuousActive) {
-                aionaTriggerManualSpeech();
+            // Only reset face and state to idle if the sequence and reaction are also finished!
+            if (!aionaSequenceRunning && !aionaReactionRunning && aionaState === 'speaking') {
+              if (commands && commands.length > 0) {
+                sendCmd('CMD:FACE:IDLE');
+                smoothLowerArm();
+                if (aionaContinuousActive) {
+                  aionaTriggerManualSpeech();
+                } else {
+                  setAionaState('idle');
+                  if (aionaWakeWordActive) startAionaWakeWordScanner();
+                }
               } else {
-                setAionaState('idle');
-                if (aionaWakeWordActive) startAionaWakeWordScanner();
+                sendCmd('CMD:FACE:IDLE');
+                aionaDoEmotionPhysicalReactions(emotion, userInput);
               }
-            } else {
-              sendCmd('CMD:FACE:IDLE');
-              aionaDoEmotionPhysicalReactions(emotion, userInput);
             }
-          }
-        };
+          };
 
-        // Start explicit sequence commands concurrently with speech synthesis
-        if (commands && commands.length > 0) {
-          executeAionaCommandSequence(commands);
+          utterance.onerror = () => {
+            aionaSpeechRunning = false;
+            window.activeAionaUtterance = null;
+            if (aionaTalkPulseInterval) {
+              clearInterval(aionaTalkPulseInterval);
+              aionaTalkPulseInterval = null;
+            }
+
+            // Only reset face and state to idle if the sequence and reaction are also finished!
+            if (!aionaSequenceRunning && !aionaReactionRunning && aionaState === 'speaking') {
+              if (commands && commands.length > 0) {
+                sendCmd('CMD:FACE:IDLE');
+                smoothLowerArm();
+                if (aionaContinuousActive) {
+                  aionaTriggerManualSpeech();
+                } else {
+                  setAionaState('idle');
+                  if (aionaWakeWordActive) startAionaWakeWordScanner();
+                }
+              } else {
+                sendCmd('CMD:FACE:IDLE');
+                aionaDoEmotionPhysicalReactions(emotion, userInput);
+              }
+            }
+          };
+
+          // Start explicit sequence commands concurrently with speech synthesis
+          if (commands && commands.length > 0) {
+            executeAionaCommandSequence(commands);
+          }
+
+          window.speechSynthesis.speak(utterance);
         }
-
-        window.speechSynthesis.speak(utterance);
       } else {
         // If voice is disabled, run actions immediately, and use a timer to act as the speech-running buffer duration
         aionaSpeechRunning = true;
@@ -7292,6 +7501,22 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         }
       }
 
+      // Sync Speech settings
+      const engineSelect = document.getElementById('settingsSpeechEngine');
+      const deviceSelect = document.getElementById('settingsSpeechDevice');
+      const voiceSelect = document.getElementById('settingsSpeechVoice');
+      const settingsGroup = document.getElementById('kokoroSettingsGroup');
+      if (engineSelect) engineSelect.value = v5Settings.speechEngine || 'system';
+      if (deviceSelect) deviceSelect.value = v5Settings.speechDevice || 'wasm';
+      if (voiceSelect) voiceSelect.value = v5Settings.speechVoice || 'af_bella';
+      if (settingsGroup) {
+        if (v5Settings.speechEngine === 'kokoro') {
+          settingsGroup.classList.remove('hidden');
+        } else {
+          settingsGroup.classList.add('hidden');
+        }
+      }
+
       document.getElementById('settingsModal').classList.remove('hidden');
     }
 
@@ -7323,6 +7548,187 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         joyYInverted = v5Settings.joyInvertFB;
         localStorage.setItem('migo_joy_y_inverted', joyYInverted);
         updateInvertVisuals();
+      }
+    }
+
+    function changeSpeechEngine(val) {
+      v5Settings.speechEngine = val;
+      const settingsGroup = document.getElementById('kokoroSettingsGroup');
+      if (settingsGroup) {
+        if (val === 'kokoro') {
+          settingsGroup.classList.remove('hidden');
+          preloadKokoroModel();
+        } else {
+          settingsGroup.classList.add('hidden');
+        }
+      }
+      saveV5Settings();
+    }
+
+    function changeSpeechDevice(val) {
+      const oldDevice = v5Settings.speechDevice;
+      v5Settings.speechDevice = val;
+      saveV5Settings();
+      if (val !== oldDevice) {
+        // Force model reload when device changes
+        kokoroModel = null;
+        preloadKokoroModel();
+      }
+    }
+
+    function changeSpeechVoice(val) {
+      v5Settings.speechVoice = val;
+      saveV5Settings();
+    }
+
+    async function playAionaSpeechKokoro(text, commands, emotion, userInput) {
+      stopKokoroSpeech();
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+
+      aionaSpeechRunning = true;
+      if (aionaTalkPulseInterval) clearInterval(aionaTalkPulseInterval);
+      sendCmd('CMD:FACE:TALK'); // Send immediately to start mouth animation
+      aionaTalkPulseInterval = setInterval(() => {
+        sendCmd('CMD:FACE:TALK');
+      }, 850);
+
+      try {
+        if (!kokoroModel) {
+          await preloadKokoroModel();
+          if (!kokoroModel) throw new Error("Model failed to load");
+        }
+
+        const cleanText = text.replace(/<blockly-suggestion>[^]*?<\/blockly-suggestion>/g, "").trim();
+        if (!cleanText) {
+          handleAionaSpeechEnd(commands, emotion, userInput);
+          return;
+        }
+
+        const phoneticText = cleanText.replace(/\bmigo\b/gi, "mee-go").replace(/\baiona\b/gi, "eye-oh-nuh");
+        const result = await kokoroModel.generate(phoneticText, { voice: v5Settings.speechVoice || "af_bella" });
+
+        if (!currentKokoroAudioCtx) {
+          currentKokoroAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (currentKokoroAudioCtx.state === 'suspended') {
+          await currentKokoroAudioCtx.resume();
+        }
+
+        const buffer = currentKokoroAudioCtx.createBuffer(1, result.audio.length, result.sampling_rate);
+        buffer.copyToChannel(result.audio, 0);
+
+        const source = currentKokoroAudioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(currentKokoroAudioCtx.destination);
+        currentKokoroSource = source;
+
+        // Simulate word boundaries
+        const duration = result.audio.length / result.sampling_rate;
+        const textLen = phoneticText.length;
+        const phoneticWords = phoneticText.split(/\s+/);
+        let accumTime = 0;
+
+        phoneticWords.forEach((word) => {
+          const cleanWordMatch = word.match(/[a-zA-Z0-9']+/);
+          const cleanWord = cleanWordMatch ? cleanWordMatch[0] : "";
+          const puncMatch = word.match(/[.,!?]/);
+          const punctuation = puncMatch ? puncMatch[0] : "";
+          
+          const wordDuration = (word.length / textLen) * duration;
+          const wordTime = accumTime;
+          accumTime += wordDuration;
+
+          if (cleanWord) {
+            setTimeout(() => {
+              if (currentKokoroSource === source && aionaSpeechRunning) {
+                if (!aionaSequenceRunning) {
+                  triggerWordGesture(cleanWord, punctuation);
+                }
+              }
+            }, wordTime * 1000);
+          }
+        });
+
+        source.onended = () => {
+          if (currentKokoroSource === source) {
+            currentKokoroSource = null;
+            handleAionaSpeechEnd(commands, emotion, userInput);
+          }
+        };
+
+        // Start explicit sequence commands concurrently with speech synthesis
+        if (commands && commands.length > 0) {
+          executeAionaCommandSequence(commands);
+        }
+
+        source.start(0);
+
+      } catch (err) {
+        console.error("Aiona Kokoro Speech Error:", err);
+        showAionaErrorNotification("Speech failed. Falling back to system voice.");
+        aionaSpeechRunning = false;
+        if (aionaTalkPulseInterval) {
+          clearInterval(aionaTalkPulseInterval);
+          aionaTalkPulseInterval = null;
+        }
+        
+        // Fallback to system voice
+        if (window.speechSynthesis) {
+          const phoneticText = text.replace(/\bmigo\b/gi, "mee-go").replace(/\baiona\b/gi, "eye-oh-nuh");
+          const utterance = new SpeechSynthesisUtterance(phoneticText);
+          window.activeAionaUtterance = utterance;
+          const voices = window.speechSynthesis.getVoices();
+          const englishVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
+          if (englishVoice) utterance.voice = englishVoice;
+          utterance.rate = 1.02; utterance.pitch = 1.25;
+
+          aionaSpeechRunning = true;
+          aionaTalkPulseInterval = setInterval(() => {
+            sendCmd('CMD:FACE:TALK');
+          }, 850);
+
+          utterance.onend = () => {
+            aionaSpeechRunning = false;
+            window.activeAionaUtterance = null;
+            if (aionaTalkPulseInterval) {
+              clearInterval(aionaTalkPulseInterval);
+              aionaTalkPulseInterval = null;
+            }
+            handleAionaSpeechEnd(commands, emotion, userInput);
+          };
+          utterance.onerror = utterance.onend;
+          
+          if (commands && commands.length > 0) {
+            executeAionaCommandSequence(commands);
+          }
+          window.speechSynthesis.speak(utterance);
+        } else {
+          handleAionaSpeechEnd(commands, emotion, userInput);
+        }
+      }
+    }
+
+    function handleAionaSpeechEnd(commands, emotion, userInput) {
+      aionaSpeechRunning = false;
+      if (aionaTalkPulseInterval) {
+        clearInterval(aionaTalkPulseInterval);
+        aionaTalkPulseInterval = null;
+      }
+
+      if (!aionaSequenceRunning && !aionaReactionRunning && aionaState === 'speaking') {
+        if (commands && commands.length > 0) {
+          sendCmd('CMD:FACE:IDLE');
+          smoothLowerArm();
+          if (aionaContinuousActive) {
+            aionaTriggerManualSpeech();
+          } else {
+            setAionaState('idle');
+            if (aionaWakeWordActive) startAionaWakeWordScanner();
+          }
+        } else {
+          sendCmd('CMD:FACE:IDLE');
+          aionaDoEmotionPhysicalReactions(emotion, userInput);
+        }
       }
     }
 
