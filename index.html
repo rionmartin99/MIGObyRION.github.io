@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 5.3.6
+  MIGO Web Controller | Version: 5.4.0
   Change Log:
+  [Jul 09, 2026 8:45 PM] New Feature: Add keyboard controls Q (arm up) and E (arm down) to increment/decrement arm servo percentage.
+  [Jul 09, 2026 8:42 PM] Fix: Apply D-Pad direction inversion settings to keyboard control keys (WASD and Arrows).
+  [Jul 09, 2026 8:35 PM] New Feature: Add Block Code Inversion settings to invert movement directions in parseBlock and C++ generation.
+  [Jul 09, 2026 8:25 PM] Fix: Resolve streaming response truncation by tracking string literals, escapes, and only scanning new characters in the response chunks.
   [Jul 09, 2026 7:12 PM] Fix: Implement smart watchdog fallback to ensure conversational gestures work with custom/offline voices that do not support SpeechSynthesis onboundary events.
-  [Jul 09, 2026 6:59 PM] Fix: Add timer-based speech gesture fallback on mobile devices to resolve missing conversational movements due to SpeechSynthesis.onboundary limitations on iOS/Android.
-  [Jul 09, 2026 6:10 PM] Fix: Optimize AIONA Desk Companion UI responsiveness for mobile portrait devices by using side-by-side layout, smaller orb scaling, and hiding header button labels on small screens.
-  [Jul 09, 2026 2:40 PM] New Feature: Add Continuous Conversation Mode toggle button and support auto-listening after finishing a response.
-  [Jul 09, 2026 2:35 PM] Fix: Reset companion mode state to idle when speech finishes or errors, avoiding getting stuck in speaking mode when disconnected or when reaction finishes.
 -->
 
 <!DOCTYPE html>
@@ -478,6 +478,43 @@
             <div class="flex items-center gap-2">
               <span id="joyLRLabel" class="text-[8px] text-white/40 font-bold uppercase">Off</span>
               <button id="joyLRToggle" onclick="toggleSetting('joyInvertLR')"
+                class="w-10 h-6 bg-slate-700 rounded-full p-0.5 transition-all relative flex items-center cursor-pointer">
+                <span class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Block Programming Inversion ────────────────────── -->
+      <div class="mb-6">
+        <p class="text-[10px] text-amber-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
+          <i class="ph-bold ph-puzzle-piece text-xs"></i> Block Code Inversion
+        </p>
+        <div class="bg-black/30 border border-white/10 rounded-xl p-4 space-y-3">
+          <!-- Forward/Backward invert -->
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold text-white/80">Invert Forward / Backward</p>
+              <p class="text-[9px] text-white/40">Inverts 'Forward' and 'Backward' block directions</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span id="blockFBLabel" class="text-[8px] text-white/40 font-bold uppercase">Off</span>
+              <button id="blockFBToggle" onclick="toggleSetting('blockInvertFB')"
+                class="w-10 h-6 bg-slate-700 rounded-full p-0.5 transition-all relative flex items-center cursor-pointer">
+                <span class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
+              </button>
+            </div>
+          </div>
+          <!-- Left/Right invert -->
+          <div class="flex items-center justify-between border-t border-white/5 pt-3">
+            <div>
+              <p class="text-xs font-semibold text-white/80">Invert Left / Right</p>
+              <p class="text-[9px] text-white/40">Inverts 'Spin Left' and 'Spin Right' block directions</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span id="blockLRLabel" class="text-[8px] text-white/40 font-bold uppercase">Off</span>
+              <button id="blockLRToggle" onclick="toggleSetting('blockInvertLR')"
                 class="w-10 h-6 bg-slate-700 rounded-full p-0.5 transition-all relative flex items-center cursor-pointer">
                 <span class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
               </button>
@@ -1707,6 +1744,8 @@
       dpadInvertLR: false,
       joyInvertFB: false,
       joyInvertLR: false,
+      blockInvertFB: false,
+      blockInvertLR: false,
     };
     let aionaObstacleWarned = false;
     let aionaLastKnownDist = 999;
@@ -3039,6 +3078,8 @@
 
     // --- Keyboard Control for D-Pad (WASD & Arrows) ---
     const activeKeys = new Set();
+    let armUpInterval = null;
+    let armDownInterval = null;
     const keyMap = {
       'w': { cmd: 'F', btnId: 'btn-up' },
       'arrowup': { cmd: 'F', btnId: 'btn-up' },
@@ -3056,9 +3097,39 @@
       if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.isContentEditable) {
         return;
       }
-      if (e.repeat) return;
 
       const key = e.key.toLowerCase();
+      if (key === 'q') {
+        if (e.repeat) return;
+        if (!armUpInterval) {
+          const runUp = () => {
+            let nextPercent = Math.min(100, aionaLastServoPercent + 5);
+            if (nextPercent !== aionaLastServoPercent) {
+              aionaSetServo(nextPercent);
+            }
+          };
+          runUp();
+          armUpInterval = setInterval(runUp, 50);
+        }
+        return;
+      }
+      if (key === 'e') {
+        if (e.repeat) return;
+        if (!armDownInterval) {
+          const runDown = () => {
+            let nextPercent = Math.max(0, aionaLastServoPercent - 5);
+            if (nextPercent !== aionaLastServoPercent) {
+              aionaSetServo(nextPercent);
+            }
+          };
+          runDown();
+          armDownInterval = setInterval(runDown, 50);
+        }
+        return;
+      }
+
+      if (e.repeat) return;
+
       if (keyMap[key]) {
         const { cmd, btnId } = keyMap[key];
 
@@ -3071,7 +3142,8 @@
           document.getElementById(btnId)?.classList.add('key-pressed');
         } else {
           activeKeys.add(cmd);
-          sendCmd(`CMD:DIR:${cmd}`);
+          const finalCmd = typeof getDpadCmd === 'function' ? getDpadCmd(cmd) : cmd;
+          sendCmd(`CMD:DIR:${finalCmd}`);
           document.getElementById(btnId)?.classList.add('key-pressed');
         }
       }
@@ -3083,6 +3155,21 @@
       }
 
       const key = e.key.toLowerCase();
+      if (key === 'q') {
+        if (armUpInterval) {
+          clearInterval(armUpInterval);
+          armUpInterval = null;
+        }
+        return;
+      }
+      if (key === 'e') {
+        if (armDownInterval) {
+          clearInterval(armDownInterval);
+          armDownInterval = null;
+        }
+        return;
+      }
+
       if (keyMap[key]) {
         const { cmd, btnId } = keyMap[key];
         document.getElementById(btnId)?.classList.remove('key-pressed');
@@ -3093,7 +3180,8 @@
             sendCmd('CMD:DIR:S');
           } else {
             const lastPressed = Array.from(activeKeys).pop();
-            sendCmd(`CMD:DIR:${lastPressed}`);
+            const finalCmd = typeof getDpadCmd === 'function' ? getDpadCmd(lastPressed) : lastPressed;
+            sendCmd(`CMD:DIR:${finalCmd}`);
           }
         }
       }
@@ -3430,7 +3518,18 @@
       let arr = [];
       let current = block;
       while (current) {
-        if (current.type === 'move_robot') arr.push({ c: "M", d: current.getFieldValue("DIR"), s: Number(current.getFieldValue("SPD")) });
+        if (current.type === 'move_robot') {
+          let dir = current.getFieldValue("DIR");
+          if (v5Settings.blockInvertFB) {
+            if (dir === 'F') dir = 'B';
+            else if (dir === 'B') dir = 'F';
+          }
+          if (v5Settings.blockInvertLR) {
+            if (dir === 'L') dir = 'R';
+            else if (dir === 'R') dir = 'L';
+          }
+          arr.push({ c: "M", d: dir, s: Number(current.getFieldValue("SPD")) });
+        }
         else if (current.type === 'stop_robot') arr.push({ c: "M", d: "S", s: 0 });
         else if (current.type === 'wait_time') arr.push({ c: "W", t: Number(current.getFieldValue("TIME")) });
         else if (current.type === 'wait_time_s') arr.push({ c: "W", t: Number(current.getFieldValue("TIME")) * 1000 });
@@ -3655,7 +3754,16 @@
         let current = block;
         while (current) {
           if (current.type === 'move_robot') {
-            blockCode += `${indent}moveRobot("${current.getFieldValue("DIR")}", ${current.getFieldValue("SPD")});\n`;
+            let dir = current.getFieldValue("DIR");
+            if (v5Settings.blockInvertFB) {
+              if (dir === 'F') dir = 'B';
+              else if (dir === 'B') dir = 'F';
+            }
+            if (v5Settings.blockInvertLR) {
+              if (dir === 'L') dir = 'R';
+              else if (dir === 'R') dir = 'L';
+            }
+            blockCode += `${indent}moveRobot("${dir}", ${current.getFieldValue("SPD")});\n`;
           } else if (current.type === 'stop_robot') {
             blockCode += `${indent}stopMoving();\n`;
           } else if (current.type === 'wait_time') {
@@ -4434,6 +4542,9 @@ Example 1: Move forward for 2 seconds and stop (Explorer):
         let accumulatedText = "";
         let braceCount = 0;
         let jsonStart = -1;
+        let inString = false;
+        let escapeNext = false;
+        let scannedLength = 0;
 
         while (true) {
           const { value, done } = await reader.read();
@@ -4441,35 +4552,44 @@ Example 1: Move forward for 2 seconds and stop (Explorer):
 
           buffer += decoder.decode(value, { stream: true });
 
-          for (let i = 0; i < buffer.length; i++) {
+          for (let i = scannedLength; i < buffer.length; i++) {
             const char = buffer[i];
-            if (char === '{') {
-              if (braceCount === 0) jsonStart = i;
-              braceCount++;
-            } else if (char === '}') {
-              braceCount--;
-              if (braceCount === 0 && jsonStart !== -1) {
-                const jsonStr = buffer.substring(jsonStart, i + 1);
-                try {
-                  const obj = JSON.parse(jsonStr);
-                  const textPart = obj.candidates?.[0]?.content?.parts?.[0]?.text || "";
-                  if (textPart) {
-                    accumulatedText += textPart;
-                    onChunk(accumulatedText);
+            if (inString) {
+              if (escapeNext) {
+                escapeNext = false;
+              } else if (char === '\\') {
+                escapeNext = true;
+              } else if (char === '"') {
+                inString = false;
+              }
+            } else {
+              if (char === '"') {
+                inString = true;
+              } else if (char === '{') {
+                if (braceCount === 0) jsonStart = i;
+                braceCount++;
+              } else if (char === '}') {
+                if (braceCount > 0) {
+                  braceCount--;
+                  if (braceCount === 0 && jsonStart !== -1) {
+                    const jsonStr = buffer.substring(jsonStart, i + 1);
+                    try {
+                      const obj = JSON.parse(jsonStr);
+                      const textPart = obj.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                      if (textPart) {
+                        accumulatedText += textPart;
+                        onChunk(accumulatedText);
+                      }
+                    } catch (e) {
+                      // Partial JSON, wait for more chunks
+                    }
+                    jsonStart = -1;
                   }
-                } catch (e) {
-                  // Partial JSON, wait for more chunks
                 }
-                jsonStart = -1;
               }
             }
           }
-
-          if (jsonStart !== -1) {
-            buffer = buffer.substring(jsonStart);
-          } else {
-            buffer = "";
-          }
+          scannedLength = buffer.length;
         }
 
         onComplete(accumulatedText);
@@ -7297,7 +7417,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       if (sl) { sl.value = v5MaxSpeed; updateMaxSpeed(v5MaxSpeed, true); }
       if (od) { od.value = v5ObstacleThresh; updateObstacleThresh(v5ObstacleThresh, true); }
       // Sync toggle visuals
-      ['dpadInvertFB', 'dpadInvertLR', 'joyInvertFB', 'joyInvertLR'].forEach(k => updateToggleVisual(k));
+      ['dpadInvertFB', 'dpadInvertLR', 'joyInvertFB', 'joyInvertLR', 'blockInvertFB', 'blockInvertLR'].forEach(k => updateToggleVisual(k));
 
       // Sync Gemini API Key input and status
       const savedKey = localStorage.getItem('migo_gemini_api_key') || '';
@@ -7365,6 +7485,8 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         dpadInvertLR: { btn: 'dpadLRToggle', label: 'dpadLRLabel', color: 'bg-teal-500' },
         joyInvertFB: { btn: 'joyFBToggle', label: 'joyFBLabel', color: 'bg-purple-500' },
         joyInvertLR: { btn: 'joyLRToggle', label: 'joyLRLabel', color: 'bg-purple-500' },
+        blockInvertFB: { btn: 'blockFBToggle', label: 'blockFBLabel', color: 'bg-amber-500' },
+        blockInvertLR: { btn: 'blockLRToggle', label: 'blockLRLabel', color: 'bg-amber-500' },
       };
       const m = map[key];
       if (!m) return;
