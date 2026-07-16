@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 5.4.0
+  MIGO Web Controller | Version: 5.5.0
   Change Log:
+  [Jul 16, 2026 9:45 PM] New Feature: Add a lockable servo motor control slider below the D-pad/joystick with mispress prevention.
   [Jul 09, 2026 8:45 PM] New Feature: Add keyboard controls Q (arm up) and E (arm down) to increment/decrement arm servo percentage.
   [Jul 09, 2026 8:42 PM] Fix: Apply D-Pad direction inversion settings to keyboard control keys (WASD and Arrows).
   [Jul 09, 2026 8:35 PM] New Feature: Add Block Code Inversion settings to invert movement directions in parseBlock and C++ generation.
   [Jul 09, 2026 8:25 PM] Fix: Resolve streaming response truncation by tracking string literals, escapes, and only scanning new characters in the response chunks.
-  [Jul 09, 2026 7:12 PM] Fix: Implement smart watchdog fallback to ensure conversational gestures work with custom/offline voices that do not support SpeechSynthesis onboundary events.
 -->
 
 <!DOCTYPE html>
@@ -278,6 +278,67 @@
 
     .animate-pulse-red {
       animation: pulse-red 1.2s infinite;
+    }
+
+    /* Custom Servo Slider styling */
+    #servoSlider {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 9999px;
+      outline: none;
+      transition: all 0.2s;
+    }
+    #servoSlider:disabled {
+      cursor: not-allowed;
+    }
+    /* Webkit (Chrome/Safari/Edge) */
+    #servoSlider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #f59e0b; /* Amber 500 */
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.7);
+      transition: transform 0.1s, background 0.1s;
+    }
+    #servoSlider:not(:disabled)::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      background: #fbbf24; /* Amber 400 */
+    }
+    #servoSlider:not(:disabled)::-webkit-slider-thumb:active {
+      transform: scale(1.25);
+    }
+    #servoSlider:disabled::-webkit-slider-thumb {
+      background: rgba(255, 255, 255, 0.4);
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+    /* Firefox */
+    #servoSlider::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border: none;
+      border-radius: 50%;
+      background: #f59e0b;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.7);
+      transition: transform 0.1s, background 0.1s;
+    }
+    #servoSlider:not(:disabled)::-moz-range-thumb:hover {
+      transform: scale(1.15);
+      background: #fbbf24;
+    }
+    #servoSlider:not(:disabled)::-moz-range-thumb:active {
+      transform: scale(1.25);
+    }
+    #servoSlider:disabled::-moz-range-thumb {
+      background: rgba(255, 255, 255, 0.4);
+      box-shadow: none;
+      cursor: not-allowed;
     }
   </style>
 </head>
@@ -1163,6 +1224,22 @@
           <div id="joystickKnob"
             class="w-16 h-16 landscape:w-20 landscape:h-20 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.4)] absolute pointer-events-none transition-transform duration-75">
           </div>
+        </div>
+
+        <!-- Servo Control Slider -->
+        <div id="servoSliderContainer" class="w-40 landscape:w-48 mt-6 flex flex-col items-center gap-1.5 select-none bg-black/20 p-2.5 rounded-xl border border-white/10 shadow-inner">
+          <div class="flex justify-between w-full text-[9px] font-bold tracking-wider text-white/80 px-0.5">
+            <span class="flex items-center gap-1">
+              <button id="servoLockBtn" onclick="toggleServoLock()" class="hover:text-amber-400 transition-colors focus:outline-none" title="Toggle Lock">
+                <i id="servoLockIcon" class="ph-bold ph-lock text-xs text-amber-500"></i>
+              </button>
+              ARM SERVO
+            </span>
+            <span id="servoSliderValue" class="text-amber-400 font-mono">0%</span>
+          </div>
+          <input type="range" id="servoSlider" min="0" max="100" value="0" disabled
+            class="w-full opacity-50 transition-opacity duration-200"
+            oninput="handleServoSliderInput(this.value)">
         </div>
       </div>
 
@@ -6440,6 +6517,46 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       }
     }
 
+    let servoLocked = true;
+
+    function toggleServoLock() {
+      servoLocked = !servoLocked;
+      const slider = document.getElementById('servoSlider');
+      const icon = document.getElementById('servoLockIcon');
+      if (slider) {
+        slider.disabled = servoLocked;
+        if (servoLocked) {
+          slider.classList.add('opacity-50');
+        } else {
+          slider.classList.remove('opacity-50');
+        }
+      }
+      if (icon) {
+        if (servoLocked) {
+          icon.className = 'ph-bold ph-lock text-xs text-amber-500';
+        } else {
+          icon.className = 'ph-bold ph-lock-simple-open text-xs text-green-400';
+        }
+      }
+      if (navigator.vibrate) navigator.vibrate(20);
+    }
+
+    function handleServoSliderInput(val) {
+      const angle = parseInt(val) || 0;
+      aionaSetServo(angle);
+    }
+
+    function updateServoSliderUI(value) {
+      const slider = document.getElementById('servoSlider');
+      const valLabel = document.getElementById('servoSliderValue');
+      if (slider) {
+        slider.value = value;
+      }
+      if (valLabel) {
+        valLabel.textContent = value + '%';
+      }
+    }
+
     function aionaSetServo(angle, pin = null) {
       if (aionaArmLowerTimer) {
         clearInterval(aionaArmLowerTimer);
@@ -6451,6 +6568,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       } else {
         sendCmd(`CMD:SERVO:${angle}`);
       }
+      updateServoSliderUI(angle);
     }
 
     function smoothLowerArm(force = false) {
@@ -6469,6 +6587,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       if (aionaLastServoPercent <= 0) {
         sendCmd('CMD:SERVO:0');
         aionaLastServoPercent = 0;
+        updateServoSliderUI(0);
         return;
       }
 
@@ -6483,9 +6602,11 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           aionaArmLowerTimer = null;
           aionaLastServoPercent = 0;
           sendCmd('CMD:SERVO:0');
+          updateServoSliderUI(0);
         } else {
           aionaLastServoPercent = current;
           sendCmd(`CMD:SERVO:${Math.round(current)}`);
+          updateServoSliderUI(Math.round(current));
         }
       }, intervalTime);
     }
