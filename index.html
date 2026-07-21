@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 6.1.2
+  MIGO Web Controller | Version: 6.1.3
   Change Log:
+  [Jul 21, 2026 9:55 PM] New Feature: Dynamic model selector fallback to gemini-3.1-flash-lite if gemini-2.5-flash is restricted for the API key.
   [Jul 21, 2026 2:10 PM] Fix: Address SpeechSynthesis GC bug in speakOutLoud and speakText to prevent speech engine hanging.
   [Jul 21, 2026 11:45 AM] Fix: Enable TTS for serial print notifications in non-SIM mode and guard simulator TTS with ttsEnabled toggle.
   [Jul 16, 2026 9:45 PM] New Feature: Add a lockable servo motor control slider below the D-pad/joystick with mispress prevention.
   [Jul 13, 2026 6:26 PM] Fix: Resolve TDZ reference error and restore missing BLE service/characteristic configuration constants.
-  [Jul 13, 2026 6:15 PM] New Feature: Implement multi-MIGO support allowing simultaneous control of multiple MIGO robots via Web Bluetooth.
 -->
 
 <!DOCTYPE html>
@@ -1858,6 +1858,7 @@
     let recognition;
     let isListening = false;
     let ttsEnabled = true;
+    let geminiModel = localStorage.getItem('migo_gemini_model') || 'gemini-2.5-flash';
     let chatHistory = [];
     let activeSuggestions = [];
     
@@ -4759,10 +4760,10 @@ Example 1: Move forward for 2 seconds and stop (Explorer):
 }
 `;
 
-    // --- Reusable Streamed Response Helper (Gemini 2.5 Flash) ---
+    // --- Reusable Streamed Response Helper (Gemini 2.5 Flash / 3.1 Flash Lite) ---
     async function streamGemini(apiKey, payload, systemText, temperature, maxTokens, onChunk, onComplete, onError) {
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=${apiKey}`, {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:streamGenerateContent?key=${apiKey}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -4863,7 +4864,8 @@ Example 1: Move forward for 2 seconds and stop (Explorer):
       errorEl.classList.add('hidden');
 
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+        let modelToUse = 'gemini-2.5-flash';
+        let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${key}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
@@ -4873,8 +4875,28 @@ Example 1: Move forward for 2 seconds and stop (Explorer):
           })
         });
 
+        if (res.status !== 200) {
+          const errJson = await res.json().catch(() => ({}));
+          const errMsg = errJson.error?.message || "";
+          if (errMsg.includes("gemini-2.5-flash") || errMsg.includes("not available") || res.status === 400 || res.status === 403) {
+            console.warn("gemini-2.5-flash restricted or unavailable. Fallback to gemini-3.1-flash-lite...");
+            modelToUse = 'gemini-3.1-flash-lite';
+            res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${key}`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: "Ping" }] }]
+              })
+            });
+          }
+        }
+
         if (res.status === 200) {
           localStorage.setItem('migo_gemini_api_key', key);
+          localStorage.setItem('migo_gemini_model', modelToUse);
+          geminiModel = modelToUse;
           unlockChat();
         } else {
           const errJson = await res.json();
@@ -6779,7 +6801,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       });
 
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -8004,7 +8026,8 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       errorEl.classList.add('hidden');
 
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+        let modelToUse = 'gemini-2.5-flash';
+        let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${key}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
@@ -8014,8 +8037,28 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           })
         });
 
+        if (res.status !== 200) {
+          const errJson = await res.json().catch(() => ({}));
+          const errMsg = errJson.error?.message || "";
+          if (errMsg.includes("gemini-2.5-flash") || errMsg.includes("not available") || res.status === 400 || res.status === 403) {
+            console.warn("gemini-2.5-flash restricted or unavailable. Fallback to gemini-3.1-flash-lite...");
+            modelToUse = 'gemini-3.1-flash-lite';
+            res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${key}`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: "Ping" }] }]
+              })
+            });
+          }
+        }
+
         if (res.status === 200) {
           localStorage.setItem('migo_gemini_api_key', key);
+          localStorage.setItem('migo_gemini_model', modelToUse);
+          geminiModel = modelToUse;
 
           // Sync main/landing setup screen input if present
           const mainInput = document.getElementById('geminiApiKeyInput');
