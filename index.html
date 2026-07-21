@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 5.5.0
+  MIGO Web Controller | Version: 6.1.2
   Change Log:
+  [Jul 21, 2026 2:10 PM] Fix: Address SpeechSynthesis GC bug in speakOutLoud and speakText to prevent speech engine hanging.
+  [Jul 21, 2026 11:45 AM] Fix: Enable TTS for serial print notifications in non-SIM mode and guard simulator TTS with ttsEnabled toggle.
   [Jul 16, 2026 9:45 PM] New Feature: Add a lockable servo motor control slider below the D-pad/joystick with mispress prevention.
-  [Jul 09, 2026 8:45 PM] New Feature: Add keyboard controls Q (arm up) and E (arm down) to increment/decrement arm servo percentage.
-  [Jul 09, 2026 8:42 PM] Fix: Apply D-Pad direction inversion settings to keyboard control keys (WASD and Arrows).
-  [Jul 09, 2026 8:35 PM] New Feature: Add Block Code Inversion settings to invert movement directions in parseBlock and C++ generation.
-  [Jul 09, 2026 8:25 PM] Fix: Resolve streaming response truncation by tracking string literals, escapes, and only scanning new characters in the response chunks.
+  [Jul 13, 2026 6:26 PM] Fix: Resolve TDZ reference error and restore missing BLE service/characteristic configuration constants.
+  [Jul 13, 2026 6:15 PM] New Feature: Implement multi-MIGO support allowing simultaneous control of multiple MIGO robots via Web Bluetooth.
 -->
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v5</title>
+  <title>MIGO Robot Controller v6</title>
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -350,7 +350,7 @@
     class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-teal-900/95 backdrop-blur-xl p-4 md:p-6 transition-opacity duration-500">
     <h1 class="text-4xl md:text-6xl font-bold mb-2 text-center drop-shadow-lg">MIGO <span
         class="text-amber-400">Controller<sub
-          class="text-2xl md:text-3xl font-semibold ml-1 text-amber-300">v5</sub></span></h1>
+          class="text-2xl md:text-3xl font-semibold ml-1 text-amber-300">v6</sub></span></h1>
     <p class="text-white/60 mb-6 text-sm md:text-base">Choose your coding level to get started!</p>
 
     <div class="glass-panel p-6 max-w-2xl w-full">
@@ -908,6 +908,38 @@
     </div>
   </div>
 
+  <!-- MIGO DEVICES MANAGER MODAL -->
+  <div id="migoDevicesModal"
+    class="hidden absolute inset-0 z-[120] flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm p-4">
+    <div
+      class="glass-panel bg-slate-900 border-teal-500 border-2 p-6 max-w-lg w-full relative text-teal-50 shadow-2xl rounded-2xl flex flex-col max-h-[92%]">
+      <button onclick="document.getElementById('migoDevicesModal').classList.add('hidden')"
+        class="absolute top-4 right-4 bg-red-500 hover:bg-red-600 w-8 h-8 rounded-full font-bold flex items-center justify-center active:scale-95 transition-transform z-10">
+        <i class="ph-bold ph-x text-white"></i>
+      </button>
+      <h2 class="text-2xl font-bold mb-1 text-teal-300 flex items-center gap-2 shrink-0">
+        <i class="ph-bold ph-cpu"></i> MIGO Devices Manager
+      </h2>
+      <p class="text-xs text-white/50 mb-4 shrink-0">Manage and control multiple MIGO robots simultaneously.</p>
+      
+      <!-- List of connected robots -->
+      <div id="migoModalDevicesList" class="space-y-3 overflow-y-auto flex-grow pr-1 mb-4">
+        <!-- Rendered dynamically -->
+      </div>
+      
+      <div class="flex gap-2 shrink-0">
+        <button onclick="connectBLE();"
+          class="flex-grow py-2.5 bg-teal-600 hover:bg-teal-500 active:scale-95 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer">
+          <i class="ph-bold ph-bluetooth"></i> Connect Another Robot
+        </button>
+        <button onclick="document.getElementById('migoDevicesModal').classList.add('hidden')"
+          class="w-24 py-2.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center cursor-pointer border border-white/10">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- AIONA MEMORY BANK MODAL (V5 — Tabbed: Memories + Personality) -->
   <div id="aionaMemoryModal"
     class="hidden absolute inset-0 z-[110] flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm p-4">
@@ -1279,8 +1311,9 @@
           <button id="tabConsoleBtn" onclick="setSidebarTab('console')"
             class="flex-1 text-[9px] py-1 rounded bg-white/20 font-bold transition-all text-white">Console</button>
           <button id="tabSensorsBtn" onclick="setSidebarTab('sensors')"
-            class="flex-1 text-[9px] py-1 rounded font-medium text-white/50 hover:text-white transition-all">Sensor
-            HUD</button>
+            class="flex-1 text-[9px] py-1 rounded font-medium text-white/50 hover:text-white transition-all">Sensor HUD</button>
+          <button id="tabDevicesBtn" onclick="setSidebarTab('devices')"
+            class="flex-1 text-[9px] py-1 rounded font-medium text-white/50 hover:text-white transition-all">MIGOs</button>
         </div>
       </div>
 
@@ -1339,6 +1372,22 @@
               <div id="hud-plugC-bar" class="bg-purple-400 h-full rounded transition-all duration-200"
                 style="width: 0%;"></div>
             </div>
+          </div>
+        </div>
+
+        <!-- MIGOs List (Multi-Device Management) -->
+        <div id="migo-devices-list"
+          class="hidden w-full h-full bg-black/50 rounded-lg p-2 text-[9px] overflow-y-auto space-y-2 border border-white/10 shadow-inner">
+          <div
+            class="flex justify-between items-center border-b border-white/10 pb-0.5 mb-1 text-[8px] font-bold text-teal-400">
+            <span>🤖 CONNECTED ROBOTS</span>
+            <button onclick="document.getElementById('migoDevicesModal').classList.remove('hidden')" 
+              class="text-[8px] text-amber-400 hover:text-amber-300 font-bold bg-white/5 px-1.5 py-0.5 rounded border border-white/10 active:scale-95 transition-all">
+              Manage
+            </button>
+          </div>
+          <div id="sidebarMigoListContainer" class="space-y-1.5 max-h-[85px] overflow-y-auto pr-0.5">
+            <!-- Sidebar devices rendered here -->
           </div>
         </div>
       </div>
@@ -1811,7 +1860,42 @@
     let ttsEnabled = true;
     let chatHistory = [];
     let activeSuggestions = [];
-    let connectedVersion = "v3";
+    
+    // V6 Multi-MIGO connection state management (declared at top to avoid Temporal Dead Zone ReferenceError)
+    let connectedMigos = []; 
+    
+    // BLE Configuration Constants
+    const serviceUuid = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+    const charWriteUuid = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+    const charReadUuid = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+    
+    let connectedVersionVal = "v3";
+    Object.defineProperty(window, 'connectedVersion', {
+      get: () => {
+        const primary = connectedMigos.find(m => m.isTelemetrySource);
+        return primary ? primary.connectedVersion : (connectedMigos[0] ? connectedMigos[0].connectedVersion : connectedVersionVal);
+      },
+      set: (val) => {
+        connectedVersionVal = val;
+      },
+      configurable: true
+    });
+
+    Object.defineProperty(window, 'myCharacteristic', {
+      get: () => {
+        const active = connectedMigos.find(m => m.active);
+        return active ? active.writeChar : (connectedMigos[0] ? connectedMigos[0].writeChar : null);
+      },
+      configurable: true
+    });
+    
+    Object.defineProperty(window, 'txCharacteristic', {
+      get: () => {
+        const active = connectedMigos.find(m => m.active);
+        return active ? active.readChar : (connectedMigos[0] ? connectedMigos[0].readChar : null);
+      },
+      configurable: true
+    });
 
     // --- V5 Settings State (Declared at top to avoid Temporal Dead Zone ReferenceError) ---
     let v5MaxSpeed = 200;
@@ -1981,25 +2065,39 @@
       }, 50);
     }
 
-    // --- Sidebar Tabs (Console vs Sensor HUD) ---
+    // --- Sidebar Tabs (Console vs Sensor HUD vs MIGOs) ---
     function setSidebarTab(tab) {
       const consoleBtn = document.getElementById('tabConsoleBtn');
       const sensorsBtn = document.getElementById('tabSensorsBtn');
+      const devicesBtn = document.getElementById('tabDevicesBtn');
       const consoleEl = document.getElementById('serial-console');
       const hudEl = document.getElementById('sensor-hud');
+      const devicesEl = document.getElementById('migo-devices-list');
 
-      if (!consoleBtn || !sensorsBtn) return;
+      if (!consoleBtn || !sensorsBtn || !devicesBtn || !consoleEl || !hudEl || !devicesEl) return;
 
       if (tab === 'console') {
         consoleBtn.className = "flex-1 text-[9px] py-1 rounded bg-white/20 font-bold transition-all text-white";
         sensorsBtn.className = "flex-1 text-[9px] py-1 rounded font-medium text-white/50 hover:text-white transition-all";
+        devicesBtn.className = "flex-1 text-[9px] py-1 rounded font-medium text-white/50 hover:text-white transition-all";
         consoleEl.classList.remove('hidden');
         hudEl.classList.add('hidden');
-      } else {
+        devicesEl.classList.add('hidden');
+      } else if (tab === 'sensors') {
         sensorsBtn.className = "flex-1 text-[9px] py-1 rounded bg-white/20 font-bold transition-all text-white";
         consoleBtn.className = "flex-1 text-[9px] py-1 rounded font-medium text-white/50 hover:text-white transition-all";
+        devicesBtn.className = "flex-1 text-[9px] py-1 rounded font-medium text-white/50 hover:text-white transition-all";
         consoleEl.classList.add('hidden');
         hudEl.classList.remove('hidden');
+        devicesEl.classList.add('hidden');
+      } else {
+        devicesBtn.className = "flex-1 text-[9px] py-1 rounded bg-white/20 font-bold transition-all text-white";
+        consoleBtn.className = "flex-1 text-[9px] py-1 rounded font-medium text-white/50 hover:text-white transition-all";
+        sensorsBtn.className = "flex-1 text-[9px] py-1 rounded font-medium text-white/50 hover:text-white transition-all";
+        consoleEl.classList.add('hidden');
+        hudEl.classList.add('hidden');
+        devicesEl.classList.remove('hidden');
+        renderMigoDevices();
       }
     }
 
@@ -2807,11 +2905,7 @@
       });
     }
 
-    // --- BLE Logic ---
-    const serviceUuid = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-    const charWriteUuid = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-    const charReadUuid = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
-    let myCharacteristic, txCharacteristic;
+    // (State management variables and getters moved to top of script to avoid TDZ ReferenceErrors)
 
     // --- Random Idle Scanning Logic ---
     let lastActivityTime = Date.now();
@@ -2888,7 +2982,7 @@
 
     async function connectBLE() {
       try {
-        printToConsole("Connecting to MIGO...");
+        printToConsole("Requesting MIGO device...");
         const device = await navigator.bluetooth.requestDevice({
           filters: [
             { name: 'Migo_Web_Bot_v4' },
@@ -2899,85 +2993,105 @@
           optionalServices: [serviceUuid]
         });
 
-        device.addEventListener('gattserverdisconnected', () => {
-          const panel = document.getElementById("simPanel");
-          const isSimActive = panel && !panel.classList.contains("hidden");
-          if (!isSimActive) {
-            updateStatus('Status: Disconnected');
-          }
-          pendingAck = null;
-          printToConsole("Disconnected.");
-          if (idleScanningInterval) {
-            clearInterval(idleScanningInterval);
-            idleScanningInterval = null;
-          }
-        });
+        if (connectedMigos.some(m => m.device.id === device.id)) {
+          alert("This MIGO is already connected!");
+          return;
+        }
 
+        printToConsole(`Connecting to ${device.name}...`);
         const server = await device.gatt.connect();
         const service = await server.getPrimaryService(serviceUuid);
-        myCharacteristic = await service.getCharacteristic(charWriteUuid);
-        txCharacteristic = await service.getCharacteristic(charReadUuid);
+        const writeChar = await service.getCharacteristic(charWriteUuid);
+        const readChar = await service.getCharacteristic(charReadUuid);
 
-        txCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+        const migoId = "migo_" + Math.random().toString(36).substr(2, 9);
+        const defaultName = localStorage.getItem('migoRobotName') || device.name;
+        let chosenName = defaultName;
+        let count = 1;
+        while (connectedMigos.some(m => m.name === chosenName)) {
+          chosenName = `${defaultName} ${++count}`;
+        }
+
+        let connectedVersion = "v4";
+        if (device.name === "Migo_Web_Bot_v3") connectedVersion = "v3";
+        else if (device.name === "Migo_Web_Bot_v2") connectedVersion = "v2";
+        else if (device.name === "Migo_Web_Bot") connectedVersion = "v1";
+
+        const newMigo = {
+          id: migoId,
+          name: chosenName,
+          device: device,
+          server: server,
+          writeChar: writeChar,
+          readChar: readChar,
+          active: true,
+          connectedVersion: connectedVersion,
+          lastDist: 999.0,
+          lastPlugA: 0,
+          lastPlugB: 0,
+          lastPlugC: 0,
+          isTelemetrySource: connectedMigos.length === 0
+        };
+
+        device.addEventListener('gattserverdisconnected', () => {
+          printToConsole(`Disconnected from ${newMigo.name}.`);
+          const index = connectedMigos.findIndex(m => m.id === newMigo.id);
+          if (index !== -1) {
+            const wasTelemetrySource = connectedMigos[index].isTelemetrySource;
+            connectedMigos.splice(index, 1);
+            if (wasTelemetrySource && connectedMigos.length > 0) {
+              connectedMigos[0].isTelemetrySource = true;
+              updateHUDWithMigoData(connectedMigos[0]);
+            }
+          }
+          renderMigoDevices();
+          updateStatusAndUIs();
+        });
+
+        readChar.addEventListener('characteristicvaluechanged', (event) => {
           let val = new TextDecoder().decode(event.target.value).trim();
           if (val === 'ACK' && pendingAck) {
             const resolve = pendingAck;
             pendingAck = null;
             resolve();
           } else if (val.startsWith("TEL:")) {
-            // BLE Sensor data parser
             let parts = val.substring(4).split(":");
             let dist = parseFloat(parts[0]);
             let a = parseInt(parts[1]);
             let b = parseInt(parts[2]);
             let c = parseInt(parts[3]);
-            aionaLastPlugA = a;
-            aionaLastPlugB = b;
-            aionaLastPlugC = c;
+            
+            newMigo.lastDist = dist;
+            newMigo.lastPlugA = a;
+            newMigo.lastPlugB = b;
+            newMigo.lastPlugC = c;
 
-            const distEl = document.getElementById("hud-dist");
-            const distBar = document.getElementById("hud-dist-bar");
-            const aEl = document.getElementById("hud-plugA");
-            const aBar = document.getElementById("hud-plugA-bar");
-            const bEl = document.getElementById("hud-plugB");
-            const bBar = document.getElementById("hud-plugB-bar");
-            const cEl = document.getElementById("hud-plugC");
-            const cBar = document.getElementById("hud-plugC-bar");
-
-            if (distEl) distEl.innerText = dist === 999.0 ? "No Obstacle" : `${dist.toFixed(1)} cm`;
-            if (distBar) distBar.style.width = `${Math.min(100, (dist / 100) * 100)}%`;
-            if (aEl) aEl.innerText = a;
-            if (aBar) aBar.style.width = `${(a / 4095) * 100}%`;
-            if (bEl) bEl.innerText = b;
-            if (bBar) bBar.style.width = `${(b / 4095) * 100}%`;
-            if (cEl) cEl.innerText = c;
-            if (cBar) cBar.style.width = `${(c / 4095) * 100}%`;
+            if (newMigo.isTelemetrySource) {
+              aionaLastKnownDist = dist;
+              aionaLastPlugA = a;
+              aionaLastPlugB = b;
+              aionaLastPlugC = c;
+              updateHUDWithMigoData(newMigo);
+            }
           } else {
-            printToConsole(val);
+            printToConsole(`[${newMigo.name}] ${val}`);
+            if (ttsEnabled) {
+              speakOutLoud(val);
+            }
           }
         });
-        await txCharacteristic.startNotifications();
 
-        connectedVersion = "v4";
-        if (device.name === "Migo_Web_Bot_v3") connectedVersion = "v3";
-        else if (device.name === "Migo_Web_Bot_v2") connectedVersion = "v2";
-        else if (device.name === "Migo_Web_Bot") connectedVersion = "v1";
+        await readChar.startNotifications();
+        connectedMigos.push(newMigo);
 
-        const panel = document.getElementById("simPanel");
-        const isSimActive = panel && !panel.classList.contains("hidden");
-        if (!isSimActive) {
-          updateStatus(`Status: Connected (${connectedVersion})`);
-        }
-        printToConsole(`Connected successfully to MIGO ${connectedVersion}!`);
+        printToConsole(`Connected successfully to ${newMigo.name}!`);
+        
+        renderMigoDevices();
+        updateStatusAndUIs();
         startIdleScanning();
       } catch (e) {
         console.error(e);
-        const panel = document.getElementById("simPanel");
-        const isSimActive = panel && !panel.classList.contains("hidden");
-        if (!isSimActive) {
-          updateStatus('Status: Connection Failed');
-        }
-        printToConsole("Connection failed.");
+        printToConsole("Connection failed: " + (e.message || e));
       }
     }
 
@@ -3060,6 +3174,19 @@
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel(); // Stop current speech to play new
         const utterance = new SpeechSynthesisUtterance(text);
+        
+        // Prevent Chrome SpeechSynthesis garbage collection bug
+        window.activeUtterances = window.activeUtterances || [];
+        window.activeUtterances.push(utterance);
+        utterance.onend = () => {
+          const index = window.activeUtterances.indexOf(utterance);
+          if (index > -1) window.activeUtterances.splice(index, 1);
+        };
+        utterance.onerror = () => {
+          const index = window.activeUtterances.indexOf(utterance);
+          if (index > -1) window.activeUtterances.splice(index, 1);
+        };
+
         const voices = window.speechSynthesis.getVoices();
         const englishVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
         if (englishVoice) utterance.voice = englishVoice;
@@ -3083,11 +3210,21 @@
         handleSimCmd(cmd);
         return;
       }
-      if (!myCharacteristic || isUploading) return;
+      const activeMigos = connectedMigos.filter(m => m.active);
+      if (activeMigos.length === 0 || isUploading) return;
+      
+      const encoder = new TextEncoder();
+      const encodedCmd = encoder.encode(cmd);
+      
       await executeGatt(async () => {
-        try {
-          await myCharacteristic.writeValueWithoutResponse(new TextEncoder().encode(cmd));
-        } catch (e) { console.error("BLE Error:", e); }
+        for (let migo of activeMigos) {
+          try {
+            await migo.writeChar.writeValueWithoutResponse(encodedCmd);
+            await new Promise(r => setTimeout(r, 5));
+          } catch (e) {
+            console.error(`BLE Error on ${migo.name}:`, e);
+          }
+        }
       });
     }
 
@@ -3096,13 +3233,16 @@
       if (panel && !panel.classList.contains("hidden")) {
         return;
       }
-      if (!myCharacteristic) return;
-      await executeGatt(() => myCharacteristic.writeValueWithoutResponse(new TextEncoder().encode(cmd)));
+      const activeMigos = connectedMigos.filter(m => m.active);
+      if (activeMigos.length === 0) return;
+      const migo = activeMigos[0];
+
+      await executeGatt(() => migo.writeChar.writeValueWithoutResponse(new TextEncoder().encode(cmd)));
 
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           pendingAck = null;
-          reject(new Error('No ACK from robot (timeout).'));
+          reject(new Error(`No ACK from ${migo.name} (timeout).`));
         }, 3000);
         pendingAck = () => {
           clearTimeout(timer);
@@ -3668,17 +3808,46 @@
       return arr;
     }
 
+    async function uploadToSingleMigo(migo, str, chunkLimit, totalChunks) {
+      pendingAck = null;
+      
+      async function sendSingleMigoCmdReliable(cmd) {
+        await executeGatt(() => migo.writeChar.writeValueWithoutResponse(new TextEncoder().encode(cmd)));
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            pendingAck = null;
+            reject(new Error(`Timeout waiting for ACK`));
+          }, 3000);
+          pendingAck = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+        });
+      }
+
+      await sendSingleMigoCmdReliable('<SCRIPT:START>');
+      for (let i = 0; i < str.length; i += chunkLimit) {
+        await sendSingleMigoCmdReliable(str.substring(i, i + chunkLimit));
+      }
+      await executeGatt(() => migo.writeChar.writeValueWithoutResponse(new TextEncoder().encode('<SCRIPT:END>')));
+      printToConsole(`Waiting for ${migo.name} confirmation...`);
+      await new Promise(r => setTimeout(r, 500));
+    }
+
     async function uploadProgram() {
       const panel = document.getElementById("simPanel");
       if (panel && !panel.classList.contains("hidden")) {
         alert("Please close the Sim Twin before uploading code to the physical MIGO!");
         return;
       }
-      if (!myCharacteristic) { alert("Please connect to the robot first!"); return; }
+      const activeMigos = connectedMigos.filter(m => m.active);
+      if (activeMigos.length === 0) {
+        alert("Please connect and activate at least one robot first!");
+        return;
+      }
       if (isUploading) return;
 
       isUploading = true;
-      pendingAck = null;
       let json = { funcs: {} };
       for (let b of workspace.getTopBlocks()) {
         if (b.type === 'event_setup') json.funcs.setup = parseBlock(b.getInputTargetBlock("DO")) || [];
@@ -3688,14 +3857,13 @@
       let str = JSON.stringify(json);
       const CHUNK = 18;
       const totalChunks = Math.ceil(str.length / CHUNK);
-      printToConsole(`Uploading ${str.length} bytes in ${totalChunks} packets...`);
+      
       try {
-        await sendCmdReliable('<SCRIPT:START>');
-        for (let i = 0; i < str.length; i += CHUNK) {
-          await sendCmdReliable(str.substring(i, i + CHUNK));
+        for (let migo of activeMigos) {
+          printToConsole(`Uploading to ${migo.name} (${str.length} bytes in ${totalChunks} packets)...`);
+          await uploadToSingleMigo(migo, str, CHUNK, totalChunks);
         }
-        await executeGatt(() => myCharacteristic.writeValueWithoutResponse(new TextEncoder().encode('<SCRIPT:END>')));
-        printToConsole("Waiting for robot confirmation...");
+        printToConsole("All active robots updated successfully!");
       } catch (e) {
         printToConsole("Upload failed: " + e.message);
       } finally {
@@ -4446,7 +4614,9 @@
               } else if (cmd.c === "P") {
                 let val = evaluateSimExpression(cmd.v);
                 printToConsole("[SIM] " + val);
-                speakOutLoud(val);
+                if (ttsEnabled) {
+                  speakOutLoud(val);
+                }
               } else if (cmd.c === "FOR") {
                 let loopBody = cmd.do || [];
                 if (loopBody.length > 0) {
@@ -5422,6 +5592,19 @@ ${JSON.stringify(workspaceState, null, 2)}
 
       const phoneticText = cleanText.replace(/\bmigo\b/gi, "mee-go");
       const utterance = new SpeechSynthesisUtterance(phoneticText);
+
+      // Prevent Chrome SpeechSynthesis garbage collection bug
+      window.activeUtterances = window.activeUtterances || [];
+      window.activeUtterances.push(utterance);
+      utterance.onend = () => {
+        const index = window.activeUtterances.indexOf(utterance);
+        if (index > -1) window.activeUtterances.splice(index, 1);
+      };
+      utterance.onerror = () => {
+        const index = window.activeUtterances.indexOf(utterance);
+        if (index > -1) window.activeUtterances.splice(index, 1);
+      };
+
       const voices = window.speechSynthesis.getVoices();
       const englishVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
       if (englishVoice) utterance.voice = englishVoice;
@@ -5559,21 +5742,203 @@ ${JSON.stringify(workspaceState, null, 2)}
     }
 
     function updateAionaConnectionState() {
-      const statusEl = document.getElementById('aionaConnectionStatus');
+      updateStatusAndUIs();
+    }
+
+    function updateStatusAndUIs() {
+      const count = connectedMigos.length;
+      const activeCount = connectedMigos.filter(m => m.active).length;
+      
+      let statusStr = "Status: Disconnected";
+      if (count > 0) {
+        statusStr = `Status: Connected (${activeCount}/${count} active)`;
+      }
+      
+      document.querySelectorAll('.statusEl').forEach(el => el.innerText = statusStr);
+      
       const connBtn = document.getElementById('aionaConnectBtn');
-      if (myCharacteristic) {
-        statusEl.innerText = `Status: Connected (${connectedVersion})`;
-        statusEl.className = "statusEl text-[9px] text-teal-400 mt-0.5 leading-none font-semibold";
-        if (connBtn) {
-          connBtn.innerHTML = `<i class="ph-bold ph-bluetooth-connected text-sm"></i> Connected`;
-          connBtn.className = "glass-panel py-1.5 px-3 text-xs font-bold flex items-center justify-center gap-1.5 bg-teal-500/20 text-teal-300 border border-teal-500/40 hover:bg-white/20 transition-all active:scale-95";
+      if (connBtn) {
+        if (count > 0) {
+          connBtn.innerHTML = `<i class="ph-bold ph-cpu text-sm animate-pulse"></i> ${activeCount}/${count} Robots`;
+          connBtn.className = "glass-panel py-1.5 px-2.5 md:px-3 text-xs font-bold flex items-center justify-center gap-1.5 bg-teal-500/20 text-teal-300 border border-teal-500/40 hover:bg-white/20 transition-all active:scale-95";
+        } else {
+          connBtn.innerHTML = `<i class="ph-bold ph-bluetooth text-sm"></i> <span class="hidden md:inline">Connect</span>`;
+          connBtn.className = "glass-panel py-1.5 px-2.5 md:px-3 text-xs font-bold flex items-center justify-center gap-1 hover:bg-white/20 transition-all active:scale-95";
         }
-      } else {
-        statusEl.innerText = `Status: Disconnected`;
-        statusEl.className = "statusEl text-[9px] text-white/50 mt-0.5 leading-none";
-        if (connBtn) {
-          connBtn.innerHTML = `<i class="ph-bold ph-bluetooth text-sm"></i> Connect`;
-          connBtn.className = "glass-panel py-1.5 px-3 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-white/20 transition-all active:scale-95";
+      }
+      
+      const sidebarConnBtn = document.querySelector('aside button[onclick="connectBLE()"]');
+      if (sidebarConnBtn) {
+        if (count > 0) {
+          sidebarConnBtn.innerHTML = `<i class="ph-bold ph-cpu text-sm animate-pulse"></i> ${activeCount}/${count} Robots`;
+          sidebarConnBtn.className = "glass-panel py-1.5 px-3 text-xs font-bold flex items-center justify-center gap-1.5 bg-teal-500/20 text-teal-300 border border-teal-500/40 hover:bg-white/20 transition-all active:scale-95";
+        } else {
+          sidebarConnBtn.innerHTML = `<i class="ph-bold ph-bluetooth text-sm"></i> Connect`;
+          sidebarConnBtn.className = "glass-panel py-1.5 px-3 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-white/20 transition-all active:scale-95";
+        }
+      }
+      
+      const sensorBadge = document.getElementById('aionaSensorBadge');
+      if (sensorBadge) {
+        if (count > 0) sensorBadge.classList.remove('hidden');
+        else sensorBadge.classList.add('hidden');
+      }
+    }
+
+    function renderMigoDevices() {
+      const sidebarContainer = document.getElementById('sidebarMigoListContainer');
+      const modalContainer = document.getElementById('migoModalDevicesList');
+      
+      if (!sidebarContainer && !modalContainer) return;
+      
+      let sidebarHtml = "";
+      let modalHtml = "";
+      
+      if (connectedMigos.length === 0) {
+        const emptyHtml = `<div class="text-white/40 text-center py-2 italic text-[9px]">No robots connected.</div>`;
+        if (sidebarContainer) sidebarContainer.innerHTML = emptyHtml;
+        if (modalContainer) modalContainer.innerHTML = `<div class="text-white/40 text-center py-6 italic text-sm">No MIGO robots connected. Click below to connect one!</div>`;
+        return;
+      }
+      
+      connectedMigos.forEach((migo) => {
+        const activeCheck = migo.active ? "checked" : "";
+        const starClass = migo.isTelemetrySource ? "ph-fill ph-star text-amber-400" : "ph-bold ph-star text-white/40 hover:text-white";
+        const statusText = migo.active ? "Active" : "Inactive";
+        const badgeColor = migo.active ? "bg-teal-500/20 text-teal-300 border-teal-500/30" : "bg-white/5 text-white/40 border-white/10";
+        
+        sidebarHtml += `
+          <div class="flex items-center justify-between bg-white/5 p-1.5 rounded border border-white/10">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <input type="checkbox" ${activeCheck} onchange="toggleMigoActive('${migo.id}')" class="rounded bg-black/40 border-white/20 text-teal-500 focus:ring-0 w-3 h-3 cursor-pointer shrink-0">
+              <span class="font-semibold truncate text-[10px] text-white/90" title="${migo.name}">${migo.name}</span>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+              <button onclick="setMigoTelemetrySource('${migo.id}')" title="Set as primary telemetry source">
+                <i class="${starClass} text-xs"></i>
+              </button>
+              <button onclick="disconnectMigo('${migo.id}')" class="text-red-400 hover:text-red-300" title="Disconnect">
+                <i class="ph-bold ph-power text-xs"></i>
+              </button>
+            </div>
+          </div>
+        `;
+        
+        modalHtml += `
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between bg-white/5 p-3 rounded-xl border border-white/10 gap-2.5">
+            <div class="flex items-center gap-3 min-w-0">
+              <input type="checkbox" ${activeCheck} onchange="toggleMigoActive('${migo.id}')" class="rounded bg-black/40 border-white/20 text-teal-500 focus:ring-0 w-4 h-4 cursor-pointer shrink-0">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span id="migoNameSpan_${migo.id}" class="font-bold text-sm text-teal-100 truncate">${migo.name}</span>
+                  <button onclick="promptRenameMigo('${migo.id}')" class="text-white/40 hover:text-white transition-colors" title="Rename Robot">
+                    <i class="ph-bold ph-pencil-simple text-xs"></i>
+                  </button>
+                </div>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <span class="text-[8px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded border ${badgeColor}">${statusText}</span>
+                  <span class="text-[8px] text-white/40">${migo.connectedVersion.toUpperCase()} connection</span>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between sm:justify-end gap-3.5 shrink-0 pt-2 sm:pt-0 border-t border-white/5 sm:border-0">
+              <div class="flex gap-2 text-[9px] text-white/50 font-mono">
+                <span title="Distance"><i class="ph-bold ph-scan text-teal-300"></i> ${migo.lastDist === 999.0 ? 'Clear' : migo.lastDist.toFixed(0) + 'cm'}</span>
+                <span title="Plug A"><i class="ph-bold ph-plugs"></i> A:${migo.lastPlugA}</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <button onclick="setMigoTelemetrySource('${migo.id}')" 
+                  class="flex items-center gap-1 px-2 py-1 rounded bg-slate-800 border border-white/10 hover:bg-slate-700 active:scale-95 transition-all text-[10px] font-bold cursor-pointer"
+                  title="Telemetry Source">
+                  <i class="${starClass}"></i> Telemetry
+                </button>
+                <button onclick="disconnectMigo('${migo.id}')" 
+                  class="p-1.5 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded border border-red-500/30 active:scale-95 transition-all cursor-pointer"
+                  title="Disconnect Robot">
+                  <i class="ph-bold ph-power text-sm"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      
+      if (sidebarContainer) sidebarContainer.innerHTML = sidebarHtml;
+      if (modalContainer) modalContainer.innerHTML = modalHtml;
+    }
+
+    function toggleMigoActive(id) {
+      const migo = connectedMigos.find(m => m.id === id);
+      if (migo) {
+        migo.active = !migo.active;
+        renderMigoDevices();
+        updateStatusAndUIs();
+      }
+    }
+
+    function promptRenameMigo(id) {
+      const migo = connectedMigos.find(m => m.id === id);
+      if (migo) {
+        const newName = prompt(`Enter new name for ${migo.name}:`, migo.name);
+        if (newName !== null) {
+          renameMigo(id, newName);
+        }
+      }
+    }
+
+    function renameMigo(id, newName) {
+      const migo = connectedMigos.find(m => m.id === id);
+      if (migo && newName.trim()) {
+        migo.name = newName.trim();
+        renderMigoDevices();
+      }
+    }
+
+    function setMigoTelemetrySource(id) {
+      connectedMigos.forEach(m => m.isTelemetrySource = (m.id === id));
+      renderMigoDevices();
+      const migo = connectedMigos.find(m => m.id === id);
+      if (migo) {
+        aionaLastKnownDist = migo.lastDist;
+        aionaLastPlugA = migo.lastPlugA;
+        aionaLastPlugB = migo.lastPlugB;
+        aionaLastPlugC = migo.lastPlugC;
+        updateHUDWithMigoData(migo);
+      }
+    }
+
+    function updateHUDWithMigoData(migo) {
+      const distEl = document.getElementById("hud-dist");
+      const distBar = document.getElementById("hud-dist-bar");
+      const aEl = document.getElementById("hud-plugA");
+      const aBar = document.getElementById("hud-plugA-bar");
+      const bEl = document.getElementById("hud-plugB");
+      const bBar = document.getElementById("hud-plugB-bar");
+      const cEl = document.getElementById("hud-plugC");
+      const cBar = document.getElementById("hud-plugC-bar");
+
+      if (distEl) distEl.innerText = migo.lastDist === 999.0 ? "No Obstacle" : `${migo.lastDist.toFixed(1)} cm`;
+      if (distBar) distBar.style.width = `${Math.min(100, (migo.lastDist / 100) * 100)}%`;
+      if (aEl) aEl.innerText = migo.lastPlugA;
+      if (aBar) aBar.style.width = `${(migo.lastPlugA / 4095) * 100}%`;
+      if (bEl) bEl.innerText = migo.lastPlugB;
+      if (bBar) bBar.style.width = `${(migo.lastPlugB / 4095) * 100}%`;
+      if (cEl) cEl.innerText = migo.lastPlugC;
+      if (cBar) cBar.style.width = `${(migo.lastPlugC / 4095) * 100}%`;
+
+      const aionaSensorDist = document.getElementById('aionaSensorDist');
+      if (aionaSensorDist) {
+        aionaSensorDist.innerText = migo.lastDist === 999.0 ? "Clear" : `${migo.lastDist.toFixed(0)} cm`;
+      }
+    }
+
+    async function disconnectMigo(id) {
+      const migo = connectedMigos.find(m => m.id === id);
+      if (migo) {
+        try {
+          await migo.server.disconnect();
+        } catch(e) {
+          console.error(e);
         }
       }
     }
