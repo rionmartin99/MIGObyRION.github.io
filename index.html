@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 6.1.3
+  MIGO Web Controller | Version: 8.0.0
   Change Log:
-  [Jul 21, 2026 9:55 PM] New Feature: Dynamic model selector fallback to gemini-3.1-flash-lite if gemini-2.5-flash is restricted for the API key.
-  [Jul 21, 2026 2:10 PM] Fix: Address SpeechSynthesis GC bug in speakOutLoud and speakText to prevent speech engine hanging.
-  [Jul 21, 2026 11:45 AM] Fix: Enable TTS for serial print notifications in non-SIM mode and guard simulator TTS with ttsEnabled toggle.
-  [Jul 16, 2026 9:45 PM] New Feature: Add a lockable servo motor control slider below the D-pad/joystick with mispress prevention.
-  [Jul 13, 2026 6:26 PM] Fix: Resolve TDZ reference error and restore missing BLE service/characteristic configuration constants.
+  [Jul 29, 2026 01:55 PM] New Feature: Added flexible BLE namePrefix matching and custom robot renaming UI support for Version 8.0.0.
+  [Jul 29, 2026 11:47 AM] Fix: Restored missing phoneticText variable definition in single-MIGO chat.
+  [Jul 29, 2026 11:45 AM] Fix: Synchronized Conversation Mode face animation and gestures to utterance.onstart, eliminating turn TTS lag across all MIGOs.
+  [Jul 29, 2026 11:42 AM] Fix: Single-MIGO mouth animation & physical gestures now synchronize to utterance.onstart, eliminating voice lag after text generation.
+  [Jul 29, 2026 11:32 AM] Fix: Replaced fixed turn timeouts with event-driven TTS promises + Chrome pause keep-alive. Eliminates turn lag & stuck speaking state.
 -->
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v6</title>
+  <title>MIGO Robot Controller v8</title>
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -283,6 +283,7 @@
     /* Custom Servo Slider styling */
     #servoSlider {
       -webkit-appearance: none;
+      appearance: none;
       width: 100%;
       height: 6px;
       background: rgba(255, 255, 255, 0.15);
@@ -290,9 +291,11 @@
       outline: none;
       transition: all 0.2s;
     }
+
     #servoSlider:disabled {
       cursor: not-allowed;
     }
+
     /* Webkit (Chrome/Safari/Edge) */
     #servoSlider::-webkit-slider-thumb {
       -webkit-appearance: none;
@@ -300,23 +303,29 @@
       width: 14px;
       height: 14px;
       border-radius: 50%;
-      background: #f59e0b; /* Amber 500 */
+      background: #f59e0b;
+      /* Amber 500 */
       cursor: pointer;
       box-shadow: 0 0 10px rgba(245, 158, 11, 0.7);
       transition: transform 0.1s, background 0.1s;
     }
+
     #servoSlider:not(:disabled)::-webkit-slider-thumb:hover {
       transform: scale(1.15);
-      background: #fbbf24; /* Amber 400 */
+      background: #fbbf24;
+      /* Amber 400 */
     }
+
     #servoSlider:not(:disabled)::-webkit-slider-thumb:active {
       transform: scale(1.25);
     }
+
     #servoSlider:disabled::-webkit-slider-thumb {
       background: rgba(255, 255, 255, 0.4);
       box-shadow: none;
       cursor: not-allowed;
     }
+
     /* Firefox */
     #servoSlider::-moz-range-thumb {
       width: 14px;
@@ -328,13 +337,16 @@
       box-shadow: 0 0 10px rgba(245, 158, 11, 0.7);
       transition: transform 0.1s, background 0.1s;
     }
+
     #servoSlider:not(:disabled)::-moz-range-thumb:hover {
       transform: scale(1.15);
       background: #fbbf24;
     }
+
     #servoSlider:not(:disabled)::-moz-range-thumb:active {
       transform: scale(1.25);
     }
+
     #servoSlider:disabled::-moz-range-thumb {
       background: rgba(255, 255, 255, 0.4);
       box-shadow: none;
@@ -350,7 +362,7 @@
     class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-teal-900/95 backdrop-blur-xl p-4 md:p-6 transition-opacity duration-500">
     <h1 class="text-4xl md:text-6xl font-bold mb-2 text-center drop-shadow-lg">MIGO <span
         class="text-amber-400">Controller<sub
-          class="text-2xl md:text-3xl font-semibold ml-1 text-amber-300">v6</sub></span></h1>
+          class="text-2xl md:text-3xl font-semibold ml-1 text-amber-300">v8</sub></span></h1>
     <p class="text-white/60 mb-6 text-sm md:text-base">Choose your coding level to get started!</p>
 
     <div class="glass-panel p-6 max-w-2xl w-full">
@@ -434,7 +446,28 @@
       <h2 class="text-2xl font-bold mb-1 text-teal-300 flex items-center gap-2">
         <i class="ph-bold ph-gear"></i> Settings
       </h2>
-      <p class="text-[10px] text-white/40 mb-5 uppercase tracking-wider font-semibold">MIGO Controller v5</p>
+      <p class="text-[10px] text-white/40 mb-5 uppercase tracking-wider font-semibold">MIGO Controller v8</p>
+
+      <!-- ─── Robot BLE Name Setting ──────────────────────────── -->
+      <div class="mb-6">
+        <p class="text-[10px] text-teal-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
+          <i class="ph-bold ph-bluetooth text-xs"></i> MIGO BLE Robot Name
+        </p>
+        <div class="bg-black/30 border border-white/10 rounded-xl p-4 space-y-3">
+          <div>
+            <label class="text-xs font-semibold text-white/80 mb-1.5 block">BLE Broadcast Name</label>
+            <div class="flex gap-2">
+              <input type="text" id="bleNameSettingInput" placeholder="e.g. AstroBot" maxlength="15"
+                class="flex-1 px-3 py-2 text-sm rounded-xl bg-slate-800 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400 font-semibold">
+              <button onclick="saveAndUpdateBleName()"
+                class="px-3.5 py-2 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 rounded-xl font-bold text-xs text-white shadow-md active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shrink-0">
+                <i class="ph-bold ph-floppy-disk"></i> Update BLE Name
+              </button>
+            </div>
+            <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Updates robot's Bluetooth name (prefix "MIGO_" added automatically). Robot will save to flash and restart in 0.5s.</p>
+          </div>
+        </div>
+      </div>
 
       <!-- ─── Motor Settings ──────────────────────────────────── -->
       <div class="mb-6">
@@ -787,6 +820,8 @@
                 <li><b>Text Input (text):</b> Input box to enter text strings.</li>
                 <li><b>Repeat [Times] times (control_repeat):</b> Repeats the blocks inside a specific number of times.
                 </li>
+                <li><b>Repeat until [Condition] (control_repeat_until):</b> Repeats the blocks inside until the boolean
+                  condition evaluates to true.</li>
                 <li><b>Set variable [Name] to [Value] (variable_set):</b> Creates a variable and stores a value inside
                   it.</li>
                 <li><b>variable [Name] (variable_get):</b> Retrieves the value currently stored in a variable.</li>
@@ -921,12 +956,12 @@
         <i class="ph-bold ph-cpu"></i> MIGO Devices Manager
       </h2>
       <p class="text-xs text-white/50 mb-4 shrink-0">Manage and control multiple MIGO robots simultaneously.</p>
-      
+
       <!-- List of connected robots -->
       <div id="migoModalDevicesList" class="space-y-3 overflow-y-auto flex-grow pr-1 mb-4">
         <!-- Rendered dynamically -->
       </div>
-      
+
       <div class="flex gap-2 shrink-0">
         <button onclick="connectBLE();"
           class="flex-grow py-2.5 bg-teal-600 hover:bg-teal-500 active:scale-95 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer">
@@ -1259,10 +1294,12 @@
         </div>
 
         <!-- Servo Control Slider -->
-        <div id="servoSliderContainer" class="w-40 landscape:w-48 mt-6 flex flex-col items-center gap-1.5 select-none bg-black/20 p-2.5 rounded-xl border border-white/10 shadow-inner">
+        <div id="servoSliderContainer"
+          class="w-40 landscape:w-48 mt-6 flex flex-col items-center gap-1.5 select-none bg-black/20 p-2.5 rounded-xl border border-white/10 shadow-inner">
           <div class="flex justify-between w-full text-[9px] font-bold tracking-wider text-white/80 px-0.5">
             <span class="flex items-center gap-1">
-              <button id="servoLockBtn" onclick="toggleServoLock()" class="hover:text-amber-400 transition-colors focus:outline-none" title="Toggle Lock">
+              <button id="servoLockBtn" onclick="toggleServoLock()"
+                class="hover:text-amber-400 transition-colors focus:outline-none" title="Toggle Lock">
                 <i id="servoLockIcon" class="ph-bold ph-lock text-xs text-amber-500"></i>
               </button>
               ARM SERVO
@@ -1270,8 +1307,7 @@
             <span id="servoSliderValue" class="text-amber-400 font-mono">0%</span>
           </div>
           <input type="range" id="servoSlider" min="0" max="100" value="0" disabled
-            class="w-full opacity-50 transition-opacity duration-200"
-            oninput="handleServoSliderInput(this.value)">
+            class="w-full opacity-50 transition-opacity duration-200" oninput="handleServoSliderInput(this.value)">
         </div>
       </div>
 
@@ -1311,7 +1347,8 @@
           <button id="tabConsoleBtn" onclick="setSidebarTab('console')"
             class="flex-1 text-[9px] py-1 rounded bg-white/20 font-bold transition-all text-white">Console</button>
           <button id="tabSensorsBtn" onclick="setSidebarTab('sensors')"
-            class="flex-1 text-[9px] py-1 rounded font-medium text-white/50 hover:text-white transition-all">Sensor HUD</button>
+            class="flex-1 text-[9px] py-1 rounded font-medium text-white/50 hover:text-white transition-all">Sensor
+            HUD</button>
           <button id="tabDevicesBtn" onclick="setSidebarTab('devices')"
             class="flex-1 text-[9px] py-1 rounded font-medium text-white/50 hover:text-white transition-all">MIGOs</button>
         </div>
@@ -1381,7 +1418,7 @@
           <div
             class="flex justify-between items-center border-b border-white/10 pb-0.5 mb-1 text-[8px] font-bold text-teal-400">
             <span>🤖 CONNECTED ROBOTS</span>
-            <button onclick="document.getElementById('migoDevicesModal').classList.remove('hidden')" 
+            <button onclick="document.getElementById('migoDevicesModal').classList.remove('hidden')"
               class="text-[8px] text-amber-400 hover:text-amber-300 font-bold bg-white/5 px-1.5 py-0.5 rounded border border-white/10 active:scale-95 transition-all">
               Manage
             </button>
@@ -1695,34 +1732,36 @@
 
 
     <!-- Main Content Area: Split column on desktop, stacked on mobile -->
-    <div class="flex-grow flex flex-col landscape:flex-row gap-2 md:gap-3 min-h-0">
+    <div class="flex-grow flex flex-col md:flex-row gap-2 md:gap-3 min-h-0">
 
       <!-- Left Column: Cognitive State Orb, Manual triggers, Waveform -->
-      <div class="w-full landscape:w-80 shrink-0 flex flex-row landscape:flex-col gap-2 md:gap-3">
+      <div class="w-full md:w-80 shrink-0 flex flex-col gap-2 md:gap-3">
 
         <!-- Cognitive State & Orb Panel -->
         <div
-          class="glass-panel p-3 landscape:p-5 flex flex-col items-center justify-center relative overflow-hidden flex-1 landscape:flex-initial min-h-[120px] landscape:min-h-[180px]">
+          class="glass-panel p-3 md:p-5 flex flex-col items-center justify-center relative overflow-hidden flex-initial min-h-[140px]">
 
           <!-- Outer decorative rotating rings -->
           <div class="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
-            <div class="w-24 h-24 landscape:w-36 landscape:h-36 rounded-full border border-dashed border-teal-300 animate-[spin_20s_linear_infinite]">
+            <div
+              class="w-24 h-24 md:w-36 md:h-36 rounded-full border border-dashed border-teal-300 animate-[spin_20s_linear_infinite]">
             </div>
             <div
-              class="w-18 h-18 landscape:w-28 landscape:h-28 rounded-full border border-dotted border-amber-300 absolute animate-[spin_12s_linear_infinite_reverse]">
+              class="w-18 h-18 md:w-28 md:h-28 rounded-full border border-dotted border-amber-300 absolute animate-[spin_12s_linear_infinite_reverse]">
             </div>
           </div>
 
           <!-- Pulsing Cognitive Orb -->
-          <div id="aionaOrbContainer" class="relative w-16 h-16 landscape:w-24 landscape:h-24 flex items-center justify-center mb-1.5 landscape:mb-3">
+          <div id="aionaOrbContainer"
+            class="relative w-16 h-16 md:w-20 md:h-20 flex items-center justify-center mb-1.5 md:mb-3">
             <div id="aionaOrbGlow"
               class="absolute inset-0 rounded-full bg-teal-400/20 blur-xl transition-all duration-700 scale-110"></div>
             <div id="aionaOrbCore"
-              class="w-12 h-12 landscape:w-16 landscape:h-16 rounded-full bg-gradient-to-tr from-teal-500 to-emerald-400 border border-white/20 shadow-[0_0_20px_rgba(20,184,166,0.6)] flex items-center justify-center transition-all duration-500 scale-100 relative">
+              class="w-12 h-12 md:w-16 md:h-16 rounded-full bg-gradient-to-tr from-teal-500 to-emerald-400 border border-white/20 shadow-[0_0_20px_rgba(20,184,166,0.6)] flex items-center justify-center transition-all duration-500 scale-100 relative">
               <!-- Subtle inner detailing -->
               <div
-                class="w-9 h-9 landscape:w-12 landscape:h-12 rounded-full border border-white/10 absolute bg-white/5 flex items-center justify-center">
-                <i id="aionaOrbIcon" class="ph-fill ph-robot text-lg landscape:text-2xl text-white drop-shadow"></i>
+                class="w-9 h-9 md:w-12 md:h-12 rounded-full border border-white/10 absolute bg-white/5 flex items-center justify-center">
+                <i id="aionaOrbIcon" class="ph-fill ph-robot text-lg md:text-2xl text-white drop-shadow"></i>
               </div>
             </div>
           </div>
@@ -1736,7 +1775,7 @@
         </div>
 
         <!-- Quick Manual Action Board -->
-        <div class="glass-panel p-3 flex flex-col gap-2.5 flex-1 landscape:flex-initial">
+        <div class="glass-panel p-3 flex flex-col gap-2.5 flex-initial">
           <h3 class="text-[10px] font-bold text-teal-300 uppercase tracking-widest flex items-center gap-1.5"><i
               class="ph-bold ph-sparkle text-xs animate-spin" style="animation-duration: 4s;"></i> Companion Commands
           </h3>
@@ -1779,6 +1818,28 @@
 
       <!-- Right Column: Interactive Chat Area -->
       <div class="flex-grow glass-panel-dark p-2 md:p-3 flex flex-col min-h-0 relative">
+
+
+        <!-- Active Conversation Mode Header (integrated into top of main chat interface) -->
+        <div id="convModeBanner"
+          class="hidden shrink-0 mb-2 rounded-xl border border-teal-500/40 bg-teal-950/80 backdrop-blur-sm p-2 flex items-center justify-between gap-2 animate-fade-in shadow-md">
+          <div class="flex items-center gap-2 min-w-0 flex-wrap">
+            <div class="flex items-center gap-1.5 shrink-0">
+              <span class="w-2 h-2 rounded-full bg-teal-400 animate-pulse shrink-0"></span>
+              <span class="text-[10px] font-bold text-teal-300 uppercase tracking-wider shrink-0">Conversation
+                Mode</span>
+            </div>
+            <span id="convModeTopicBadge"
+              class="text-[9px] bg-amber-500/20 border border-amber-500/40 text-amber-300 px-2 py-0.5 rounded-lg truncate max-w-[150px] md:max-w-[240px]">Waiting
+              for topic...</span>
+            <!-- Per-MIGO clickable color legend -->
+            <div id="convModeLegend" class="flex flex-wrap gap-1.5"></div>
+          </div>
+          <button onclick="stopConvMode()"
+            class="px-2 py-0.5 bg-red-600/80 hover:bg-red-600 text-white text-[9px] font-bold rounded-lg border border-red-500/50 transition-all active:scale-95 cursor-pointer flex items-center gap-1 shrink-0 shadow">
+            <i class="ph-bold ph-stop-circle text-xs"></i> Stop
+          </button>
+        </div>
 
         <!-- Active Chat Scroll Container -->
         <div id="aionaChatMessages"
@@ -1824,6 +1885,15 @@
               class="absolute -top-1 -right-1 px-1 py-0.5 rounded bg-red-500 border border-slate-900 text-[6px] font-bold text-white leading-none">OFF</span>
           </button>
 
+          <!-- Conversation Mode Toggle -->
+          <button id="aionaConvModeBtn" onclick="toggleConvMode()"
+            class="w-8 h-8 rounded-full bg-teal-500/10 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 transition-all flex items-center justify-center shrink-0 mb-0.5 cursor-pointer relative"
+            title="Toggle Multi-MIGO Conversation Mode — let your robots talk to each other!">
+            <i class="ph-bold ph-users-three text-base"></i>
+            <span id="aionaConvModeBadge"
+              class="absolute -top-1 -right-1 px-1 py-0.5 rounded bg-red-500 border border-slate-900 text-[6px] font-bold text-white leading-none">OFF</span>
+          </button>
+
           <!-- Voice Mic Trigger -->
           <button id="aionaMicBtn" onclick="aionaTriggerManualSpeech()"
             class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-all flex items-center justify-center text-white shrink-0 mb-0.5 cursor-pointer"
@@ -1852,6 +1922,7 @@
 
   </div>
 
+
   <script>
     // --- Landing Page Logic ---
     let selectedTier = 0;
@@ -1861,15 +1932,15 @@
     let geminiModel = localStorage.getItem('migo_gemini_model') || 'gemini-2.5-flash';
     let chatHistory = [];
     let activeSuggestions = [];
-    
+
     // V6 Multi-MIGO connection state management (declared at top to avoid Temporal Dead Zone ReferenceError)
-    let connectedMigos = []; 
-    
+    let connectedMigos = [];
+
     // BLE Configuration Constants
     const serviceUuid = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
     const charWriteUuid = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
     const charReadUuid = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
-    
+
     let connectedVersionVal = "v3";
     Object.defineProperty(window, 'connectedVersion', {
       get: () => {
@@ -1889,7 +1960,7 @@
       },
       configurable: true
     });
-    
+
     Object.defineProperty(window, 'txCharacteristic', {
       get: () => {
         const active = connectedMigos.find(m => m.active);
@@ -2986,6 +3057,9 @@
         printToConsole("Requesting MIGO device...");
         const device = await navigator.bluetooth.requestDevice({
           filters: [
+            { namePrefix: 'MIGO' },
+            { namePrefix: 'Migo' },
+            { namePrefix: 'migo' },
             { name: 'Migo_Web_Bot_v4' },
             { name: 'Migo_Web_Bot_v3' },
             { name: 'Migo_Web_Bot_v2' },
@@ -3061,7 +3135,7 @@
             let a = parseInt(parts[1]);
             let b = parseInt(parts[2]);
             let c = parseInt(parts[3]);
-            
+
             newMigo.lastDist = dist;
             newMigo.lastPlugA = a;
             newMigo.lastPlugB = b;
@@ -3086,7 +3160,7 @@
         connectedMigos.push(newMigo);
 
         printToConsole(`Connected successfully to ${newMigo.name}!`);
-        
+
         renderMigoDevices();
         updateStatusAndUIs();
         startIdleScanning();
@@ -3175,7 +3249,7 @@
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel(); // Stop current speech to play new
         const utterance = new SpeechSynthesisUtterance(text);
-        
+
         // Prevent Chrome SpeechSynthesis garbage collection bug
         window.activeUtterances = window.activeUtterances || [];
         window.activeUtterances.push(utterance);
@@ -3213,10 +3287,10 @@
       }
       const activeMigos = connectedMigos.filter(m => m.active);
       if (activeMigos.length === 0 || isUploading) return;
-      
+
       const encoder = new TextEncoder();
       const encodedCmd = encoder.encode(cmd);
-      
+
       await executeGatt(async () => {
         for (let migo of activeMigos) {
           try {
@@ -3529,6 +3603,7 @@
       { "type": "wait_time", "message0": "Wait %1 ms", "args0": [{ "type": "field_number", "name": "TIME", "value": 1000, "min": 0 }], "previousStatement": null, "nextStatement": null, "colour": 60 },
       { "type": "wait_time_s", "message0": "Wait %1 seconds", "args0": [{ "type": "field_number", "name": "TIME", "value": 1, "min": 0 }], "previousStatement": null, "nextStatement": null, "colour": 60 },
       { "type": "control_repeat", "message0": "Repeat %1 times %2 %3", "args0": [{ "type": "field_number", "name": "TIMES", "value": 5, "min": 1 }, { "type": "input_dummy" }, { "type": "input_statement", "name": "DO" }], "previousStatement": null, "nextStatement": null, "colour": 290 },
+      { "type": "control_repeat_until", "message0": "Repeat until %1 %2 %3", "args0": [{ "type": "input_value", "name": "UNTIL", "check": "Boolean" }, { "type": "input_dummy" }, { "type": "input_statement", "name": "DO" }], "previousStatement": null, "nextStatement": null, "colour": 290 },
 
       { "type": "setup_pin", "message0": "Set %1 to %2", "args0": [{ "type": "field_dropdown", "name": "PIN", "options": [["Plug A (Pin 34)", "34"], ["Plug B (Pin 35)", "35"], ["Plug C (Pin 32)", "32"], ["Plug D (Pin 14)", "14"]] }, { "type": "field_dropdown", "name": "MODE", "options": [["Input (Read)", "IN"], ["Output (Write)", "OUT"]] }], "previousStatement": null, "nextStatement": null, "colour": 260 },
       { "type": "digital_write", "message0": "Write Digital %2 to %1", "args0": [{ "type": "field_dropdown", "name": "PIN", "options": [["Plug D (Pin 14)", "14"], ["Plug C (Pin 32)", "32"]] }, { "type": "field_dropdown", "name": "VAL", "options": [["ON (High)", "1"], ["OFF (Low)", "0"]] }], "previousStatement": null, "nextStatement": null, "colour": 260 },
@@ -3628,7 +3703,7 @@
 
     const blockCategories = {
       events: `<label text="✦ EVENTS" web-class="label-events"></label><block type="event_setup"></block><block type="event_loop"></block>`,
-      logic: `<label text="✦ LOGIC &amp; MATH" web-class="label-logic"></label><block type="controls_if"></block><block type="logic_compare"></block><block type="logic_operation"></block><block type="math_number"></block><block type="math_arithmetic"></block><block type="text"></block><block type="control_repeat"></block><block type="variable_set"></block><block type="variable_get"></block>`,
+      logic: `<label text="✦ LOGIC &amp; MATH" web-class="label-logic"></label><block type="controls_if"></block><block type="logic_compare"></block><block type="logic_operation"></block><block type="math_number"></block><block type="math_arithmetic"></block><block type="text"></block><block type="control_repeat"></block><block type="control_repeat_until"></block><block type="variable_set"></block><block type="variable_get"></block>`,
       movement: `<label text="✦ MOVEMENT &amp; SOUND" web-class="label-movement"></label><block type="move_robot"></block><block type="stop_robot"></block><block type="wait_time"></block><block type="buzzer_tone"><value name="FREQ"><block type="math_number"><field name="NUM">1000</field></block></value></block><block type="servo_motor"><value name="ANGLE"><block type="math_number"><field name="NUM">50</field></block></value></block>`,
       sensors: `<label text="✦ SENSORS" web-class="label-sensors"></label><block type="sensor_ultrasonic"></block><block type="sensor_ir"></block><block type="sensor_button"></block><block type="sensor_knob"></block><block type="sensor_ldr"></block><block type="read_digital"></block><block type="read_digital_custom"></block><block type="read_analog"></block><block type="read_analog_custom"></block>`,
       hardware: `<label text="✦ HARDWARE" web-class="label-hardware"></label><block type="setup_pin"></block><block type="setup_pin_custom"></block><block type="digital_write"></block><block type="digital_write_custom"></block><block type="analog_write"></block><block type="analog_write_custom"></block><block type="control_led"></block><block type="oled_init"></block><block type="oled_clear"></block><block type="oled_print"><value name="VAL"><block type="text"><field name="TEXT">Hello MIGO</field></block></value></block><block type="oled_show"></block>`,
@@ -3752,6 +3827,7 @@
         else if (current.type === 'wait_time') arr.push({ c: "W", t: Number(current.getFieldValue("TIME")) });
         else if (current.type === 'wait_time_s') arr.push({ c: "W", t: Number(current.getFieldValue("TIME")) * 1000 });
         else if (current.type === 'control_repeat') arr.push({ c: "FOR", times: Number(current.getFieldValue("TIMES")), "do": parseBlock(current.getInputTargetBlock("DO")) || [] });
+        else if (current.type === 'control_repeat_until') arr.push({ c: "UNTIL", cond: parseValue(current.getInputTargetBlock("UNTIL")), "do": parseBlock(current.getInputTargetBlock("DO")) || [] });
         else if (current.type === 'controls_if') {
           const elseifCount = current.elseifCount_ || 0;
           const buildIfNode = (index) => {
@@ -3811,7 +3887,7 @@
 
     async function uploadToSingleMigo(migo, str, chunkLimit, totalChunks) {
       pendingAck = null;
-      
+
       async function sendSingleMigoCmdReliable(cmd) {
         await executeGatt(() => migo.writeChar.writeValueWithoutResponse(new TextEncoder().encode(cmd)));
         return new Promise((resolve, reject) => {
@@ -3858,7 +3934,7 @@
       let str = JSON.stringify(json);
       const CHUNK = 18;
       const totalChunks = Math.ceil(str.length / CHUNK);
-      
+
       try {
         for (let migo of activeMigos) {
           printToConsole(`Uploading to ${migo.name} (${str.length} bytes in ${totalChunks} packets)...`);
@@ -4023,6 +4099,10 @@
             blockCode += getBlocksCpp(current.getInputTargetBlock("DO"), indent + "  ");
             blockCode += `${indent}}\n`;
             loopDepth--;
+          } else if (current.type === 'control_repeat_until') {
+            blockCode += `${indent}while (!(${getValCpp(current.getInputTargetBlock("UNTIL"))})) {\n`;
+            blockCode += getBlocksCpp(current.getInputTargetBlock("DO"), indent + "  ");
+            blockCode += `${indent}}\n`;
           } else if (current.type === 'controls_if') {
             const elseifCount = current.elseifCount_ || 0;
             blockCode += `${indent}if (${getValCpp(current.getInputTargetBlock("IF0"))}) {\n`;
@@ -4081,7 +4161,7 @@
       let code = "";
       if (showFullCode) {
         code += "// MIGO Bot Arduino C++ Program\n";
-        code += "// Generated by MIGO Robot Controller v3\n\n";
+        code += "// Generated by MIGO Robot Controller v8\n\n";
         code += "#include <Arduino.h>\n";
 
         if (hasOLED) {
@@ -4596,6 +4676,16 @@
                     simScriptStack.push({ array: simProgramJson.funcs.loop, index: 0, loop: true });
                   }
                 }
+              } else if (currentCtx.until) {
+                let condVal = evaluateSimExpression(currentCtx.cond);
+                if (!condVal) {
+                  currentCtx.index = 0;
+                } else {
+                  simScriptStack.pop();
+                  if (simScriptStack.length === 0 && simProgramJson.funcs.loop && simProgramJson.funcs.loop.length > 0) {
+                    simScriptStack.push({ array: simProgramJson.funcs.loop, index: 0, loop: true });
+                  }
+                }
               } else {
                 simScriptStack.pop();
                 if (simScriptStack.length === 0 && simProgramJson.funcs.loop && simProgramJson.funcs.loop.length > 0) {
@@ -4622,6 +4712,14 @@
                 let loopBody = cmd.do || [];
                 if (loopBody.length > 0) {
                   simScriptStack.push({ array: loopBody, index: 0, count: 0, max: cmd.times, repeat: true });
+                }
+              } else if (cmd.c === "UNTIL") {
+                let condVal = evaluateSimExpression(cmd.cond);
+                if (!condVal) {
+                  let loopBody = cmd.do || [];
+                  if (loopBody.length > 0) {
+                    simScriptStack.push({ array: loopBody, index: 0, cond: cmd.cond, until: true });
+                  }
                 }
               } else if (cmd.c === "C") {
                 let funcBody = simProgramJson.funcs[cmd.f] || [];
@@ -4715,18 +4813,19 @@ Available blocks and their structures:
 5. wait_time_s: Wait seconds (Used ONLY in Explorer mode!). Fields: "TIME" (number of seconds).
 6. wait_time: Wait ms (Used ONLY in Inventor mode!). Fields: "TIME" (number of milliseconds).
 7. control_repeat: Repeat times. Fields: "TIMES". Statement input: "DO".
-8. control_led: Turn Built-in LED (Used in Inventor mode). Fields: "STATE" ("on" or "off").
-9. control_led_explorer: Turn Light (Used in Explorer mode). Fields: "STATE" ("on" or "off").
-10. print_serial (Inventor VAL input) / print_serial_explorer (Explorer VAL input): Say / Print to monitor.
-11. text: Text string. Fields: "TEXT".
-12. buzzer_tone: Play tone (Pin 14/32, FREQ input, DUR number).
-13. servo_motor: Turn servo (Pin 14/32, ANGLE input).
-14. oled_init: Init OLED (SDA number, SCL number).
-15. oled_clear: Clear OLED screen buffer.
-16. oled_print: Print on OLED (X number, Y number, SIZE number, VAL input).
-17. oled_show: Show OLED Display.
-18. variable_set: Set variable (NAME text field, VAL value input).
-19. variable_get: Get variable (NAME text field).
+8. control_repeat_until: Repeat until. Input value: "UNTIL" (Boolean). Statement input: "DO".
+9. control_led: Turn Built-in LED (Used in Inventor mode). Fields: "STATE" ("on" or "off").
+10. control_led_explorer: Turn Light (Used in Explorer mode). Fields: "STATE" ("on" or "off").
+11. print_serial (Inventor VAL input) / print_serial_explorer (Explorer VAL input): Say / Print to monitor.
+12. text: Text string. Fields: "TEXT".
+13. buzzer_tone: Play tone (Pin 14/32, FREQ input, DUR number).
+14. servo_motor: Turn servo (Pin 14/32, ANGLE input).
+15. oled_init: Init OLED (SDA number, SCL number).
+16. oled_clear: Clear OLED screen buffer.
+17. oled_print: Print on OLED (X number, Y number, SIZE number, VAL input).
+18. oled_show: Show OLED Display.
+19. variable_set: Set variable (NAME text field, VAL value input).
+20. variable_get: Get variable (NAME text field).
 
 Example 1: Move forward for 2 seconds and stop (Explorer):
 {
@@ -5770,14 +5869,14 @@ ${JSON.stringify(workspaceState, null, 2)}
     function updateStatusAndUIs() {
       const count = connectedMigos.length;
       const activeCount = connectedMigos.filter(m => m.active).length;
-      
+
       let statusStr = "Status: Disconnected";
       if (count > 0) {
         statusStr = `Status: Connected (${activeCount}/${count} active)`;
       }
-      
+
       document.querySelectorAll('.statusEl').forEach(el => el.innerText = statusStr);
-      
+
       const connBtn = document.getElementById('aionaConnectBtn');
       if (connBtn) {
         if (count > 0) {
@@ -5788,7 +5887,7 @@ ${JSON.stringify(workspaceState, null, 2)}
           connBtn.className = "glass-panel py-1.5 px-2.5 md:px-3 text-xs font-bold flex items-center justify-center gap-1 hover:bg-white/20 transition-all active:scale-95";
         }
       }
-      
+
       const sidebarConnBtn = document.querySelector('aside button[onclick="connectBLE()"]');
       if (sidebarConnBtn) {
         if (count > 0) {
@@ -5799,7 +5898,7 @@ ${JSON.stringify(workspaceState, null, 2)}
           sidebarConnBtn.className = "glass-panel py-1.5 px-3 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-white/20 transition-all active:scale-95";
         }
       }
-      
+
       const sensorBadge = document.getElementById('aionaSensorBadge');
       if (sensorBadge) {
         if (count > 0) sensorBadge.classList.remove('hidden');
@@ -5810,25 +5909,25 @@ ${JSON.stringify(workspaceState, null, 2)}
     function renderMigoDevices() {
       const sidebarContainer = document.getElementById('sidebarMigoListContainer');
       const modalContainer = document.getElementById('migoModalDevicesList');
-      
+
       if (!sidebarContainer && !modalContainer) return;
-      
+
       let sidebarHtml = "";
       let modalHtml = "";
-      
+
       if (connectedMigos.length === 0) {
         const emptyHtml = `<div class="text-white/40 text-center py-2 italic text-[9px]">No robots connected.</div>`;
         if (sidebarContainer) sidebarContainer.innerHTML = emptyHtml;
         if (modalContainer) modalContainer.innerHTML = `<div class="text-white/40 text-center py-6 italic text-sm">No MIGO robots connected. Click below to connect one!</div>`;
         return;
       }
-      
+
       connectedMigos.forEach((migo) => {
         const activeCheck = migo.active ? "checked" : "";
         const starClass = migo.isTelemetrySource ? "ph-fill ph-star text-amber-400" : "ph-bold ph-star text-white/40 hover:text-white";
         const statusText = migo.active ? "Active" : "Inactive";
         const badgeColor = migo.active ? "bg-teal-500/20 text-teal-300 border-teal-500/30" : "bg-white/5 text-white/40 border-white/10";
-        
+
         sidebarHtml += `
           <div class="flex items-center justify-between bg-white/5 p-1.5 rounded border border-white/10">
             <div class="flex items-center gap-1.5 min-w-0">
@@ -5845,7 +5944,7 @@ ${JSON.stringify(workspaceState, null, 2)}
             </div>
           </div>
         `;
-        
+
         modalHtml += `
           <div class="flex flex-col sm:flex-row sm:items-center justify-between bg-white/5 p-3 rounded-xl border border-white/10 gap-2.5">
             <div class="flex items-center gap-3 min-w-0">
@@ -5884,7 +5983,7 @@ ${JSON.stringify(workspaceState, null, 2)}
           </div>
         `;
       });
-      
+
       if (sidebarContainer) sidebarContainer.innerHTML = sidebarHtml;
       if (modalContainer) modalContainer.innerHTML = modalHtml;
     }
@@ -5913,6 +6012,9 @@ ${JSON.stringify(workspaceState, null, 2)}
       if (migo && newName.trim()) {
         migo.name = newName.trim();
         renderMigoDevices();
+        if (typeof convModeActive !== 'undefined' && convModeActive) {
+          renderConvModeLegend(connectedMigos.filter(m => m.active));
+        }
       }
     }
 
@@ -5959,7 +6061,7 @@ ${JSON.stringify(workspaceState, null, 2)}
       if (migo) {
         try {
           await migo.server.disconnect();
-        } catch(e) {
+        } catch (e) {
           console.error(e);
         }
       }
@@ -6289,7 +6391,12 @@ ${JSON.stringify(workspaceState, null, 2)}
       if (!text) return;
       input.value = '';
       adjustAionaInputHeight();
-      aionaSendMessageText(text);
+      // Route to Conversation Mode handler if active, otherwise normal AIONA chat
+      if (typeof convModeActive !== 'undefined' && convModeActive) {
+        handleConvModeInputSubmit(text);
+      } else {
+        aionaSendMessageText(text);
+      }
     }
 
     // --- Aiona Memory Bank Storage Helpers ---
@@ -7050,27 +7157,35 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
       // Speech synthesis trigger (dialogue plays first)
       if (ttsEnabled && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-
         const phoneticText = text.replace(/\bmigo\b/gi, "mee-go").replace(/\baiona\b/gi, "eye-oh-nuh");
         const utterance = new SpeechSynthesisUtterance(phoneticText);
-
-        // Prevent Chrome SpeechSynthesis garbage collection bug
-        window.activeAionaUtterance = utterance;
-
+        window.activeAionaUtterance = utterance; // Prevent Chrome SpeechSynthesis GC bug
         const voices = window.speechSynthesis.getVoices();
         const englishVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
         if (englishVoice) utterance.voice = englishVoice;
         utterance.rate = 1.02; utterance.pitch = 1.25;
 
         aionaSpeechRunning = true;
-        if (aionaTalkPulseInterval) clearInterval(aionaTalkPulseInterval);
-        sendCmd('CMD:FACE:TALK'); // Send immediately to start mouth animation
-        aionaTalkPulseInterval = setInterval(() => {
-          sendCmd('CMD:FACE:TALK');
-        }, 850);
 
         let boundaryFired = false;
+        let speechStarted = false;
+
+        // Synchronize physical actions & face animation to utterance.onstart
+        // so voice audio and robot gestures begin at the exact same instant!
+        utterance.onstart = () => {
+          speechStarted = true;
+          if (aionaTalkPulseInterval) clearInterval(aionaTalkPulseInterval);
+          sendCmd('CMD:FACE:TALK'); // Send immediately as voice starts
+          aionaTalkPulseInterval = setInterval(() => {
+            if (aionaSpeechRunning) sendCmd('CMD:FACE:TALK');
+          }, 850);
+
+          // Start explicit sequence commands concurrently with actual audio start
+          if (commands && commands.length > 0) {
+            executeAionaCommandSequence(commands);
+          }
+        };
+
         utterance.onboundary = (event) => {
           if (event.name === 'word') {
             boundaryFired = true;
@@ -7111,11 +7226,10 @@ Choose the tag that best represents the tone of your text. Do not include any ot
                   triggerWordGesture(w.word, w.punctuation);
                 }
               }, delayOffset);
-              // Space words by average duration (e.g. 350ms)
               delayOffset += 350;
             });
           }
-        }, 250);
+        }, 350);
 
         utterance.onend = () => {
           aionaSpeechRunning = false;
@@ -7125,7 +7239,6 @@ Choose the tag that best represents the tone of your text. Do not include any ot
             aionaTalkPulseInterval = null;
           }
 
-          // Only reset face and state to idle if the sequence and reaction are also finished!
           if (!aionaSequenceRunning && !aionaReactionRunning && aionaState === 'speaking') {
             if (commands && commands.length > 0) {
               sendCmd('CMD:FACE:IDLE');
@@ -7151,7 +7264,6 @@ Choose the tag that best represents the tone of your text. Do not include any ot
             aionaTalkPulseInterval = null;
           }
 
-          // Only reset face and state to idle if the sequence and reaction are also finished!
           if (!aionaSequenceRunning && !aionaReactionRunning && aionaState === 'speaking') {
             if (commands && commands.length > 0) {
               sendCmd('CMD:FACE:IDLE');
@@ -7169,10 +7281,12 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           }
         };
 
-        // Start explicit sequence commands concurrently with speech synthesis
-        if (commands && commands.length > 0) {
-          executeAionaCommandSequence(commands);
-        }
+        // Fallback for browsers where onstart doesn't fire promptly
+        setTimeout(() => {
+          if (aionaSpeechRunning && !speechStarted) {
+            utterance.onstart();
+          }
+        }, 150);
 
         window.speechSynthesis.speak(utterance);
       } else {
@@ -7347,7 +7461,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       sendCmd(`CMD:FACE:${expression}`);
     }
 
-    function appendAionaMessage(role, text) {
+    function appendAionaMessage(role, text, migoIndex = null) {
       const msgs = document.getElementById('aionaChatMessages');
       if (!msgs) return;
 
@@ -7360,6 +7474,34 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         bubble.innerHTML = `
           <div class="bg-amber-500 text-black font-semibold rounded-2xl rounded-tr-none py-2 px-3 max-w-[85%] break-words shadow text-xs">
             ${formattedHtml}
+          </div>
+        `;
+      } else if (migoIndex !== null) {
+        // Per-MIGO colored bubble for Conversation Mode
+        const colorSchemes = [
+          { ring: '#14b8a6', bg: 'bg-teal-900/80', border: 'border-teal-500/40', label: 'text-teal-300' },
+          { ring: '#a855f7', bg: 'bg-purple-900/80', border: 'border-purple-500/40', label: 'text-purple-300' },
+          { ring: '#f59e0b', bg: 'bg-amber-900/80', border: 'border-amber-500/40', label: 'text-amber-300' },
+          { ring: '#ec4899', bg: 'bg-pink-900/80', border: 'border-pink-500/40', label: 'text-pink-300' },
+          { ring: '#6366f1', bg: 'bg-indigo-900/80', border: 'border-indigo-500/40', label: 'text-indigo-300' },
+        ];
+        const scheme = colorSchemes[migoIndex % colorSchemes.length];
+        const migoName = (connectedMigos && connectedMigos[migoIndex]) ? connectedMigos[migoIndex].name : `MIGO ${migoIndex + 1}`;
+        bubble.className = "flex items-start gap-2 animate-fade-in";
+        bubble.innerHTML = `
+          <div class="shrink-0 w-6 h-6 rounded-full flex items-center justify-center border overflow-hidden shadow" style="background:${scheme.ring}20; border-color:${scheme.ring}60;">
+            <svg width="18" height="18" viewBox="0 0 100 100" class="w-4 h-4">
+              <rect x="25" y="20" width="50" height="40" rx="15" fill="#1e293b"/>
+              <circle cx="43" cy="37" r="4" fill="${scheme.ring}"/>
+              <circle cx="57" cy="37" r="4" fill="${scheme.ring}"/>
+              <path d="M 38 52 Q 50 63 62 52" fill="none" stroke="${scheme.ring}" stroke-width="2.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="flex-grow flex flex-col max-w-[80%]">
+            <span class="text-[8px] font-bold uppercase tracking-wider mb-0.5 ${scheme.label}">${migoName}</span>
+            <div class="${scheme.bg} text-white rounded-2xl rounded-tl-none py-2 px-3 break-words shadow border ${scheme.border} relative text-xs">
+              ${formattedHtml}
+            </div>
           </div>
         `;
       } else {
@@ -7385,6 +7527,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       msgs.appendChild(bubble);
       msgs.scrollTop = msgs.scrollHeight;
     }
+
 
     function adjustAionaInputHeight() {
       const input = document.getElementById('aionaInputText');
@@ -7952,12 +8095,40 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         }
       }
 
+      // Sync BLE Robot Name input
+      const bleInput = document.getElementById('bleNameSettingInput');
+      if (bleInput) {
+        bleInput.value = localStorage.getItem('migoRobotName') || (connectedMigos[0]?.device?.name) || 'MIGO_Bot';
+      }
+
       document.getElementById('settingsModal').classList.remove('hidden');
     }
 
     function closeSettingsModal() {
       document.getElementById('settingsModal').classList.add('hidden');
       saveV5Settings();
+    }
+
+    function saveAndUpdateBleName() {
+      const input = document.getElementById('bleNameSettingInput');
+      if (!input) return;
+      let newName = input.value.trim();
+      if (!newName) {
+        alert("Please enter a valid BLE robot name.");
+        return;
+      }
+      if (!newName.startsWith("MIGO_") && !newName.startsWith("Migo_") && !newName.startsWith("migo_")) {
+        newName = "MIGO_" + newName;
+      }
+      localStorage.setItem('migoRobotName', newName);
+      document.querySelectorAll('.robotTitleEl').forEach(el => el.innerText = newName);
+
+      if (connectedMigos.length > 0) {
+        sendCmdToMigo(`CMD:SET_NAME:${newName}`);
+        alert(`Updating BLE name to "${newName}" on MIGO...\n\nThe robot will save this to flash memory and restart automatically in 0.5s.`);
+      } else {
+        alert(`Local name saved as "${newName}".\n\nWhen connected to MIGO over BLE, tap "Update BLE Name" to send it to the robot.`);
+      }
     }
 
     function updateMaxSpeed(val, silent = false) {
@@ -8571,6 +8742,22 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       return { cleanText: cleanText.trim(), commands };
     }
 
+    window.aionaSendMessage = function () {
+      const input = document.getElementById('aionaInputText');
+      if (!input) return;
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      adjustAionaInputHeight();
+
+      if (typeof convModeActive !== 'undefined' && convModeActive) {
+        handleConvModeInputSubmit(text);
+        return;
+      }
+
+      window.aionaSendMessageText(text);
+    };
+
     window.aionaSendMessageText = async function (text) {
       const apiKey = localStorage.getItem('migo_gemini_api_key');
       if (!apiKey) {
@@ -8767,6 +8954,730 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         if (aionaWakeWordActive) startAionaWakeWordScanner();
       }
     };
+
+    // ═══════════════════════════════════════════════════════════════
+    // MULTI-MIGO CONVERSATION MODE
+    // ═══════════════════════════════════════════════════════════════
+
+    let convModeActive = false;
+    let convModeStarted = false;
+    let convModeAborted = false;
+    let convModeMainTopic = '';
+    let convModeHistory = [];   // { role: 'migo'|'user', name: str, text: str }
+    let convModePendingInterrupt = null; // text injected by user mid-conversation
+    let convModeTurnIndex = 0;
+    let lastConvGestureTime = {}; // per-MIGO gesture timestamp throttle
+    let currentConvTalkPulse = null; // continuous mouth animation pulse timer for speaking MIGO
+
+    // Color palette aligned with appendAionaMessage's colorSchemes
+    const CONV_COLOR_RINGS = ['#14b8a6', '#a855f7', '#f59e0b', '#ec4899', '#6366f1'];
+
+    // ── Conversation Mode BLE helpers ─────────────────────────────────────────
+    // Both sendCmdToMigo and sendFaceCmdToMigo now go through executeGatt —
+    // the same global GATT lock used by sendCmd in single-MIGO mode.
+    // This is the ONLY safe way to write to a BLE characteristic on Web Bluetooth;
+    // any concurrent writes without the lock cause silent GATT errors.
+
+    // Send ANY command to a specific MIGO (motor, servo, face, LED, etc.)
+    // Uses executeGatt to serialize with all other BLE operations globally.
+    async function sendCmdToMigo(migo, cmdStr) {
+      if (!migo || !migo.writeChar) return;
+      await executeGatt(async () => {
+        try {
+          const bytes = new TextEncoder().encode(cmdStr);
+          if (typeof migo.writeChar.writeValueWithoutResponse === 'function') {
+            await migo.writeChar.writeValueWithoutResponse(bytes);
+          } else if (typeof migo.writeChar.writeValue === 'function') {
+            await migo.writeChar.writeValue(bytes);
+          }
+          await new Promise(r => setTimeout(r, 5)); // same 5ms gap as sendCmd
+        } catch (e) {
+          console.warn(`[ConvMode] BLE write error on ${migo.name}:`, e);
+        }
+      });
+    }
+
+    // Convenience wrapper for OLED face state commands on a specific MIGO.
+    // Identical to sendCmdToMigo but kept as a separate named function for clarity.
+    async function sendFaceCmdToMigo(migo, faceState) {
+      if (!migo || !migo.writeChar) return;
+      await sendCmdToMigo(migo, 'CMD:FACE:' + faceState);
+    }
+
+
+    // Trigger expressive minor physical movement gestures on a specific MIGO (PWM 100 with 110ms motor nudges)
+    function triggerWordGestureToMigo(migo, migoIdx, word, punctuation = '') {
+      if (!migo) return;
+      const now = Date.now();
+      if (lastConvGestureTime[migoIdx] && (now - lastConvGestureTime[migoIdx] < 450)) return;
+      const lowerWord = word.toLowerCase();
+
+      if (["hello", "hi", "hey", "welcome", "greetings"].some(k => lowerWord.includes(k))) {
+        lastConvGestureTime[migoIdx] = now;
+        sendCmdToMigo(migo, 'CMD:SERVO:30'); // head tilt down
+        sendCmdToMigo(migo, 'CMD:LED:on');
+        sendCmdToMigo(migo, 'CMD:JOY:100:100:'); // micro-hop forward
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 110);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); sendCmdToMigo(migo, 'CMD:LED:off'); }, 250);
+      } else if (["yes", "sure", "absolutely", "gladly", "happy", "excite", "great", "awesome", "wonderful", "love", "like", "agree"].some(k => lowerWord.includes(k)) || punctuation === '!') {
+        lastConvGestureTime[migoIdx] = now;
+        sendCmdToMigo(migo, 'CMD:SERVO:30'); // head nod
+        sendCmdToMigo(migo, 'CMD:JOY:100:100:'); // micro-hop
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 110);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 250);
+      } else if (["no", "not", "sad", "sorry", "unfortunately", "bad", "error", "bug", "wrong", "fail", "cannot", "disagree"].some(k => lowerWord.includes(k))) {
+        lastConvGestureTime[migoIdx] = now;
+        sendCmdToMigo(migo, 'CMD:JOY:-100:100:'); // body shake left
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); sendCmdToMigo(migo, 'CMD:JOY:100:-100:'); }, 100);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 200);
+      } else if (["what", "why", "how", "who", "when", "query", "question", "wonder", "curious", "ask"].some(k => lowerWord.includes(k)) || punctuation === '?') {
+        lastConvGestureTime[migoIdx] = now;
+        sendCmdToMigo(migo, 'CMD:SERVO:25'); // curious head tilt left
+        sendCmdToMigo(migo, 'CMD:JOY:100:-100:'); // micro body twist
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 100);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 300);
+      } else if (["think", "thought", "processing", "maybe", "brain", "idea", "mind", "analyse"].some(k => lowerWord.includes(k))) {
+        lastConvGestureTime[migoIdx] = now;
+        sendCmdToMigo(migo, 'CMD:SERVO:75'); // thoughtful head tilt right
+        sendCmdToMigo(migo, 'CMD:JOY:-100:100:'); // micro body twist
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 100);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 300);
+      } else if (["move", "spin", "dance", "go", "forward", "run", "turn", "drive", "left", "right"].some(k => lowerWord.includes(k))) {
+        lastConvGestureTime[migoIdx] = now;
+        sendCmdToMigo(migo, 'CMD:JOY:110:-110:'); // micro twist in place
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 110);
+      } else if (["stop", "wait", "hold", "pause", "rest", "quiet"].some(k => lowerWord.includes(k))) {
+        lastConvGestureTime[migoIdx] = now;
+        sendCmdToMigo(migo, 'CMD:SERVO:60'); // arm dip
+        sendCmdToMigo(migo, 'CMD:JOY:-100:-100:'); // brief micro-jerk back
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 100);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 250);
+      } else if (punctuation === ',') {
+        lastConvGestureTime[migoIdx] = now;
+        sendCmdToMigo(migo, 'CMD:SERVO:40'); // gentle nod
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 150);
+      }
+    }
+
+    // Trigger brief in-place emotion reactions on a specific MIGO (arm/head tilts + PWM 100 motor wiggles)
+    // NOTE: Does NOT send CMD:FACE commands — face state is managed exclusively by the talk pulse in runConvModeLoop.
+    function aionaDoEmotionPhysicalReactionsToMigo(migo, emotion) {
+      if (!migo) return;
+      if (emotion === 'HAPPY' || emotion === 'EXCITED') {
+        sendCmdToMigo(migo, 'CMD:JOY:110:-110:'); sendCmdToMigo(migo, 'CMD:SERVO:30');
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); sendCmdToMigo(migo, 'CMD:JOY:-110:110:'); sendCmdToMigo(migo, 'CMD:SERVO:70'); }, 120);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 240);
+      } else if (emotion === 'CALM') {
+        sendCmdToMigo(migo, 'CMD:JOY:90:-90:'); sendCmdToMigo(migo, 'CMD:SERVO:40');
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); sendCmdToMigo(migo, 'CMD:JOY:-90:90:'); sendCmdToMigo(migo, 'CMD:SERVO:60'); }, 120);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 240);
+      } else if (emotion === 'THINKING') {
+        sendCmdToMigo(migo, 'CMD:SERVO:75');
+        sendCmdToMigo(migo, 'CMD:JOY:-100:100:');
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 100);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 400);
+      } else {
+        sendCmdToMigo(migo, 'CMD:SERVO:50');
+      }
+    }
+
+    // Distribute personality traits evenly across the MIGO list
+    function getConvMigoPersonalities(activeMigos) {
+      loadPersonalityState();
+      const traits = personalityState.traits;
+      const count = activeMigos.length;
+
+      if (traits.length === 0) {
+        return activeMigos.map(() => []);
+      }
+
+      const slices = activeMigos.map(() => []);
+      traits.forEach((traitId, i) => {
+        slices[i % count].push(traitId);
+      });
+      return slices;
+    }
+
+    // Build the system prompt for one MIGO in the conversation
+    function buildConvMigoPrompt(migo, migoIndex, totalMigos, traitSlice, historyStr) {
+      const migoName = migo.name || `MIGO ${migoIndex + 1}`;
+      const traitLabels = traitSlice.length > 0
+        ? traitSlice.map(id => {
+          const t = PERSONALITY_TRAITS.find(t => t.id === id);
+          return t ? `${t.emoji} ${t.label} (${t.desc})` : id;
+        }).join(', ')
+        : 'Friendly, warm, supportive (default)';
+
+      const memories = getAionaMemories();
+      const memoriesStr = memories.length > 0 ? memories.map(m => `- ${m}`).join('\n') : 'None';
+      loadPersonalityState();
+      const lengthMap = { Brief: '1-2 sentences', Balanced: '2-3 sentences', Detailed: '3-5 sentences' };
+      const responseLength = lengthMap[personalityState.length] || '1-2 sentences';
+
+      // If the user has sent a message since MIGOs last replied, quietly add it to the history context.
+      // MIGOs will pick it up naturally from the conversation history — no forced direct address.
+      const lastUserItem = [...convModeHistory].reverse().find(h => h.role === 'user');
+      const lastMigoItem = [...convModeHistory].reverse().find(h => h.role === 'migo');
+      const userHasUnaddressedMsg = lastUserItem &&
+        (!lastMigoItem || convModeHistory.indexOf(lastUserItem) > convModeHistory.indexOf(lastMigoItem));
+
+      return `
+CORE SAFETY PROTOCOL: Never encourage dangerous, harmful, illegal, or unethical behavior. Prioritize user safety at all times.
+
+You are ${migoName}, one of ${totalMigos} MIGO robots having a live conversation together.
+Your physical form is a MIGO robot body. You are aware of your physical presence.
+
+YOUR UNIQUE PERSONALITY TRAITS: ${traitLabels}
+TONE: ${personalityState.tone}
+
+MAIN DISCUSSION TOPIC: "${convModeMainTopic || 'Robotics & AI'}"
+
+CRITICAL RULES FOR CONVERSATION MODE:
+1. You are ${migoName}. Stay in character.
+2. Keep your response SHORT: ${responseLength}. This is a back-and-forth conversation — be concise!
+3. Talk DIRECTLY to the other MIGO robots. You are having a robot-to-robot discussion. DO NOT talk to the user or reference the user's prompt unless the user specifically joins in (shown as "User:" in history).
+4. Do NOT open by thanking the user, repeating the topic name, or referencing who gave you the topic. Just discuss it naturally as if you were already mid-conversation.
+5. Build on what the last MIGO said — agree, disagree, add a new angle, or ask a follow-up question.
+6. If "User:" appears in the conversation history, you may briefly acknowledge their point and weave it into the robot-to-robot discussion. Do not address them repeatedly.
+7. Do NOT use markdown lists or headers. Speak naturally.
+8. End with exactly one emotion tag: [EMOTION:HAPPY], [EMOTION:CALM], [EMOTION:EXCITED], or [EMOTION:THINKING].
+9. Do NOT produce [SAVE_MEMORY:] tags in conversation mode.
+
+MEMORIES (use ONLY if directly relevant to the topic "${convModeMainTopic || 'Robotics & AI'}" — ignore otherwise):
+${memoriesStr}
+
+RECENT CONVERSATION HISTORY:
+${historyStr || '(Starting the discussion now!)'}
+
+Now give your response as ${migoName}. Jump straight into the discussion — no introductions, no greetings to the user.
+`.trim();
+    }
+
+    // Toggle Conversation Mode on/off
+    function toggleConvMode() {
+      if (convModeActive) {
+        stopConvMode();
+      } else {
+        startConvMode();
+      }
+    }
+
+    // Handle submissions from main AIONA chat input
+    function handleConvModeInputSubmit(text) {
+      if (!text || !text.trim()) return;
+      const clean = text.trim();
+      if (convModeActive && !convModeStarted) {
+        startConvModeLoopWithTopic(clean);
+      } else if (convModeActive && convModeStarted) {
+        interruptConvMode(clean);
+      }
+    }
+
+    // Update main chat input placeholder dynamically
+    function updateConvChatInputPlaceholder() {
+      const input = document.getElementById('aionaInputText');
+      if (!input) return;
+      if (convModeActive) {
+        if (!convModeStarted) {
+          input.placeholder = "Type topic to start MIGO discussion...";
+        } else {
+          input.placeholder = "Type to join the MIGO discussion...";
+        }
+      } else {
+        input.placeholder = "Wake Aiona or type your question...";
+      }
+    }
+
+    // Update the Convo Mode button badge & UI state
+    function updateConvModeBtnUI() {
+      const btn = document.getElementById('aionaConvModeBtn');
+      const badge = document.getElementById('aionaConvModeBadge');
+      const banner = document.getElementById('convModeBanner');
+      if (convModeActive) {
+        if (btn) {
+          btn.className = "w-8 h-8 rounded-full bg-teal-500 text-black font-bold transition-all flex items-center justify-center shrink-0 mb-0.5 cursor-pointer relative shadow-[0_0_12px_rgba(20,184,166,0.6)] border border-teal-400";
+        }
+        if (badge) {
+          badge.innerText = "ON";
+          badge.className = "absolute -top-1 -right-1 px-1 py-0.5 rounded bg-green-500 border border-slate-900 text-[6px] font-bold text-white leading-none";
+        }
+        if (banner) {
+          banner.classList.remove('hidden');
+          banner.classList.add('flex');
+        }
+      } else {
+        if (btn) {
+          btn.className = "w-8 h-8 rounded-full bg-teal-500/10 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 transition-all flex items-center justify-center shrink-0 mb-0.5 cursor-pointer relative";
+        }
+        if (badge) {
+          badge.innerText = "OFF";
+          badge.className = "absolute -top-1 -right-1 px-1 py-0.5 rounded bg-red-500 border border-slate-900 text-[6px] font-bold text-white leading-none";
+        }
+        if (banner) {
+          banner.classList.add('hidden');
+          banner.classList.remove('flex');
+        }
+      }
+      updateConvChatInputPlaceholder();
+    }
+
+    // Render per-MIGO clickable color legend in the banner with click-to-rename functionality
+    function renderConvModeLegend(activeMigos) {
+      const legend = document.getElementById('convModeLegend');
+      if (!legend) return;
+      legend.innerHTML = '';
+      activeMigos.forEach((migo, idx) => {
+        const ring = CONV_COLOR_RINGS[idx % CONV_COLOR_RINGS.length];
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.onclick = () => promptRenameMigo(migo.id);
+        btn.className = "flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-bold text-white border hover:scale-105 active:scale-95 transition-all cursor-pointer shadow-sm";
+        btn.style.background = ring + '22';
+        btn.style.borderColor = ring + '80';
+        btn.title = `Click/tap to rename ${migo.name || 'MIGO ' + (idx + 1)}`;
+        btn.innerHTML = `<span class="w-1.5 h-1.5 rounded-full" style="background:${ring}"></span><span>${migo.name || 'MIGO ' + (idx + 1)}</span><i class="ph-bold ph-pencil-simple text-[8px] text-white/50 ml-0.5"></i>`;
+        legend.appendChild(btn);
+      });
+    }
+
+    // Show a non-interrupting inline error in AIONA chat
+    function appendConvModeError(msg) {
+      const msgs = document.getElementById('aionaChatMessages');
+      if (!msgs) return;
+      const el = document.createElement('div');
+      el.className = "flex justify-center animate-fade-in";
+      el.innerHTML = `<div class="bg-red-900/60 border border-red-500/40 text-red-300 text-[10px] px-3 py-1.5 rounded-xl flex items-center gap-1.5"><i class="ph-bold ph-warning text-xs"></i>${msg}</div>`;
+      msgs.appendChild(el);
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    // Show a system separator message in the AIONA chat
+    function appendConvModeSystemMsg(msg) {
+      const msgs = document.getElementById('aionaChatMessages');
+      if (!msgs) return;
+      const el = document.createElement('div');
+      el.className = "flex justify-center animate-fade-in";
+      el.innerHTML = `<div class="bg-teal-900/30 border border-teal-500/20 text-teal-400/80 text-[9px] px-3 py-1 rounded-xl italic">${msg}</div>`;
+      msgs.appendChild(el);
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    // Stop Conversation Mode
+    function stopConvMode() {
+      if (currentConvTalkPulse) {
+        clearInterval(currentConvTalkPulse);
+        currentConvTalkPulse = null;
+      }
+      convModeActive = false;
+      convModeStarted = false;
+      convModeAborted = true;
+      convModeMainTopic = '';
+      convModeHistory = [];
+      convModePendingInterrupt = null;
+      updateConvModeBtnUI();
+      appendConvModeSystemMsg('🛑 Conversation Mode stopped.');
+      // Stop all MIGO face/talk animations and reset servos
+      connectedMigos.forEach(m => {
+        if (m.active) {
+          sendCmdToMigo(m, 'CMD:FACE:IDLE');
+          sendCmdToMigo(m, 'CMD:SERVO:50');
+        }
+      });
+      setAionaState('idle');
+      if (aionaWakeWordActive) startAionaWakeWordScanner();
+    }
+
+    // User interrupt mid-conversation
+    function interruptConvMode(text) {
+      if (!text || !text.trim()) return;
+      if (!convModeActive) return;
+      convModePendingInterrupt = text.trim();
+      appendAionaMessage('user', text.trim());
+    }
+
+    // Initialize Conversation Mode (Wait for User Topic)
+    async function startConvMode() {
+      const apiKey = localStorage.getItem('migo_gemini_api_key');
+      if (!apiKey) {
+        appendConvModeError('AIONA requires a Gemini API Key. Please add it in settings first.');
+        return;
+      }
+
+      const activeMigos = connectedMigos.filter(m => m.active);
+      if (activeMigos.length < 2) {
+        appendConvModeError('Conversation Mode needs at least 2 connected & active MIGO robots!');
+        return;
+      }
+
+      // Stop any ongoing AIONA speech / wake word scanning
+      stopAionaSpeechEngine();
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+      if (currentAionaSequenceAbort) { currentAionaSequenceAbort(); currentAionaSequenceAbort = null; }
+
+      convModeActive = true;
+      convModeStarted = false;
+      convModeAborted = false;
+      convModeMainTopic = '';
+      convModeHistory = [];
+      convModePendingInterrupt = null;
+      convModeTurnIndex = 0;
+
+      updateConvModeBtnUI();
+      renderConvModeLegend(activeMigos);
+
+      const topicBadge = document.getElementById('convModeTopicBadge');
+      if (topicBadge) topicBadge.innerText = 'Waiting for topic...';
+
+      appendConvModeSystemMsg(`💬 Multi-MIGO Conversation Mode Ready with ${activeMigos.length} MIGOs! Please send a message or topic in chat to start their discussion.`);
+    }
+
+    // Launch MIGO dialogue loop after user sets initial topic
+    function startConvModeLoopWithTopic(topic) {
+      if (!convModeActive || convModeStarted) return;
+      convModeMainTopic = topic;
+      convModeStarted = true;
+
+      const topicBadge = document.getElementById('convModeTopicBadge');
+      if (topicBadge) topicBadge.innerText = `Topic: "${topic}"`;
+
+      updateConvChatInputPlaceholder();
+      appendAionaMessage('user', topic);
+      convModeHistory.push({ role: 'user', name: 'User', text: topic });
+      appendConvModeSystemMsg(`🎯 Discussion topic set: "${topic}" — MIGOs starting dialogue!`);
+
+      runConvModeLoop();
+    }
+
+    // Main Conversation Mode loop
+    async function runConvModeLoop() {
+      const apiKey = localStorage.getItem('migo_gemini_api_key');
+      const activeMigos = connectedMigos.filter(m => m.active);
+      if (!apiKey || activeMigos.length < 2) {
+        stopConvMode();
+        return;
+      }
+
+      const personalities = getConvMigoPersonalities(activeMigos);
+
+      // Inter-turn delay in ms
+      const INTER_TURN_DELAY = 1800;
+      const MAX_HISTORY_TURNS = 12;
+
+      while (convModeActive && convModeStarted && !convModeAborted) {
+        const idx = convModeTurnIndex % activeMigos.length;
+        const migo = activeMigos[idx];
+        const migoName = migo.name || `MIGO ${idx + 1}`;
+        const traitSlice = personalities[idx];
+
+        // Build history string for the prompt
+        const recentHistory = convModeHistory.slice(-MAX_HISTORY_TURNS);
+        const historyStr = recentHistory.map(h => {
+          const speaker = h.role === 'user' ? 'User' : h.name;
+          return `${speaker}: ${h.text}`;
+        }).join('\n');
+
+        // Check if there's a pending user interrupt
+        if (convModePendingInterrupt) {
+          convModeHistory.push({ role: 'user', name: 'User', text: convModePendingInterrupt });
+          convModePendingInterrupt = null;
+        }
+
+        // Build per-MIGO system prompt
+        const migoPrompt = buildConvMigoPrompt(migo, idx, activeMigos.length, traitSlice, historyStr);
+
+        // Show thinking physical reaction on this MIGO (tilt head + grin face + micro-shake)
+        sendCmdToMigo(migo, 'CMD:FACE:GRIN');
+        sendCmdToMigo(migo, 'CMD:SERVO:75');
+        sendCmdToMigo(migo, 'CMD:JOY:-100:100:');
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); sendCmdToMigo(migo, 'CMD:JOY:100:-100:'); }, 100);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 200);
+
+        // Create a streaming bubble for this MIGO
+        const aionaMsgs = document.getElementById('aionaChatMessages');
+        const streamBubble = document.createElement('div');
+        const colorRings = CONV_COLOR_RINGS;
+        const ring = colorRings[idx % colorRings.length];
+        streamBubble.className = "flex items-start gap-2 animate-fade-in mb-2";
+        streamBubble.innerHTML = `
+          <div class="shrink-0 w-6 h-6 rounded-full flex items-center justify-center border overflow-hidden shadow" style="background:${ring}20;border-color:${ring}60;">
+            <svg width="18" height="18" viewBox="0 0 100 100" class="w-4 h-4">
+              <rect x="25" y="20" width="50" height="40" rx="15" fill="#1e293b"/>
+              <circle cx="43" cy="37" r="4" fill="${ring}"/>
+              <circle cx="57" cy="37" r="4" fill="${ring}"/>
+              <path d="M 38 52 Q 50 63 62 52" fill="none" stroke="${ring}" stroke-width="2.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="flex-grow flex flex-col max-w-[80%]">
+            <span class="text-[8px] font-bold uppercase tracking-wider mb-0.5" style="color:${ring}">${migoName}</span>
+            <div class="conv-stream-text text-white rounded-2xl rounded-tl-none py-2 px-3 break-words shadow border relative text-xs" style="background:${ring}18;border-color:${ring}40;">
+              <span class="animate-pulse text-white/40">...</span>
+            </div>
+          </div>
+        `;
+        if (aionaMsgs) {
+          aionaMsgs.appendChild(streamBubble);
+          aionaMsgs.scrollTop = aionaMsgs.scrollHeight;
+        }
+
+        // Stream Gemini response for this MIGO's turn
+        let finalResponse = '';
+        let streamError = false;
+
+        // Build turn prompt: if user has an unaddressed message, present it naturally; otherwise just continue
+        const lastUserItemInHistory = [...convModeHistory].reverse().find(h => h.role === 'user');
+        const lastMigoItemInHistory = [...convModeHistory].reverse().find(h => h.role === 'migo');
+        const userHasNewMsg = lastUserItemInHistory &&
+          (!lastMigoItemInHistory || convModeHistory.lastIndexOf(lastUserItemInHistory) > convModeHistory.lastIndexOf(lastMigoItemInHistory));
+        const userPromptText = userHasNewMsg
+          ? `A human joined the conversation and said: "${lastUserItemInHistory.text}". Continue the discussion as ${migoName} — you may briefly acknowledge the human's point if relevant, but keep the robot-to-robot conversation on "${convModeMainTopic}" going.`
+          : `Continue the discussion on "${convModeMainTopic}" as ${migoName}. Respond directly to what the last MIGO said.`;
+
+        await new Promise((resolve) => {
+          streamGemini(
+            apiKey,
+            [{ role: 'user', parts: [{ text: userPromptText }] }],
+            migoPrompt,
+            0.85,
+            512,
+            (accumulatedText) => {
+              if (convModeAborted) { resolve(); return; }
+              const streamEl = streamBubble.querySelector('.conv-stream-text');
+              if (streamEl) {
+                let cleanStream = accumulatedText
+                  .replace(/\[EMOTION:(HAPPY|CALM|EXCITED|THINKING)\]/gi, '')
+                  .replace(/<(aiona-commands|aiona_commands)[^>]*>[\s\S]*?<\/\1>/gi, '')
+                  .replace(/<(aiona-commands|aiona_commands)[^>]*>[\s\S]*?$/gi, '')
+                  .replace(/\{[^{}]*?"action"[^{}]*?\}/g, '')
+                  .replace(/<\/?aiona[\s\S]*$/gi, '')
+                  .trim();
+                streamEl.innerHTML = formatMarkdownToHtml(cleanStream || '...');
+              }
+              if (aionaMsgs) aionaMsgs.scrollTop = aionaMsgs.scrollHeight;
+            },
+            (finalText) => {
+              finalResponse = finalText;
+              resolve();
+            },
+            (err) => {
+              console.error('[ConvMode] Gemini error:', err);
+              streamError = true;
+              resolve();
+            }
+          );
+        });
+
+        if (convModeAborted) break;
+
+        // Remove stream bubble and render the final bubble
+        if (streamBubble.parentNode) streamBubble.remove();
+
+        if (streamError) {
+          appendConvModeError(`${migoName} lost connection. Conversation paused.`);
+          stopConvMode();
+          break;
+        }
+
+        // Parse emotion + commands from response
+        let emotion = 'HAPPY';
+        let cleanResp = finalResponse.trim();
+        const emotionMatch = cleanResp.match(/\[EMOTION:(HAPPY|CALM|EXCITED|THINKING)\]/i);
+        if (emotionMatch) {
+          emotion = emotionMatch[1].toUpperCase();
+          cleanResp = cleanResp.replace(/\[EMOTION:(HAPPY|CALM|EXCITED|THINKING)\]/gi, '').trim();
+        }
+
+        const parseResult = cleanAllAionaCommands(cleanResp);
+        cleanResp = parseResult.cleanText;
+        const commands = parseResult.commands;
+
+        // Add to conversation history
+        convModeHistory.push({ role: 'migo', name: migoName, text: cleanResp });
+
+        // Render final bubble with correct MIGO styling
+        appendAionaMessage('aiona', cleanResp, idx);
+
+
+
+        // Extract words for real-time word gestures during speaking turn
+        const wordsWithMetadata = [];
+        const wordRegex = /\b[a-zA-Z0-9']+\b[.,!?]?/g;
+        let wordMatch;
+        while ((wordMatch = wordRegex.exec(cleanResp)) !== null) {
+          const matchedText = wordMatch[0];
+          const word = matchedText.replace(/[.,!?]/g, '');
+          const puncMatch = matchedText.match(/[.,!?]$/);
+          const punctuation = puncMatch ? puncMatch[0] : '';
+          wordsWithMetadata.push({ word, punctuation });
+        }
+
+        if (commands && commands.length > 0) {
+          (async () => {
+            for (const cmd of commands.slice(0, 30)) {
+              if (convModeAborted) break;
+              if (!cmd || typeof cmd !== 'object') continue;
+              if (cmd.action === 'move' && cmd.dir) {
+                sendCmdToMigo(migo, `CMD:DIR:${cmd.dir.toUpperCase()}`);
+                const dur = Math.min(Math.max(Number(cmd.duration) || 500, 50), 2000);
+                await new Promise(r => setTimeout(r, dur));
+                if (!convModeAborted) sendCmdToMigo(migo, 'CMD:DIR:S');
+              } else if (cmd.action === 'stop') {
+                sendCmdToMigo(migo, 'CMD:DIR:S');
+                await new Promise(r => setTimeout(r, 100));
+              } else if (cmd.action === 'wait') {
+                const dur = Math.min(Math.max(Number(cmd.duration) || 500, 50), 5000);
+                await new Promise(r => setTimeout(r, dur));
+              } else if (cmd.action === 'tone' && cmd.freq) {
+                const pin = cmd.pin !== undefined ? cmd.pin : 14;
+                const freq = Math.min(Math.max(Number(cmd.freq) || 1000, 50), 8000);
+                const dur = Math.min(Math.max(Number(cmd.duration) || 500, 50), 3000);
+                sendCmdToMigo(migo, `CMD:TONE:${pin}:${freq}:${dur}`);
+                await new Promise(r => setTimeout(r, dur));
+              } else if (cmd.action === 'servo' && cmd.angle !== undefined) {
+                const pin = cmd.pin !== undefined ? cmd.pin : 14;
+                const angle = Math.min(Math.max(Number(cmd.angle) || 0, 0), 100);
+                sendCmdToMigo(migo, `CMD:SERVO:${pin}:${angle}`);
+                await new Promise(r => setTimeout(r, 300));
+              } else if (cmd.action === 'face' && cmd.state) {
+                sendCmdToMigo(migo, `CMD:FACE:${cmd.state.toUpperCase()}`);
+                await new Promise(r => setTimeout(r, 100));
+              } else if (cmd.action === 'led' && cmd.state) {
+                sendCmdToMigo(migo, `CMD:LED:${cmd.state.toLowerCase()}`);
+                await new Promise(r => setTimeout(r, 100));
+              }
+            }
+          })();
+        }
+
+        // TTS if enabled — optimized event-driven speech execution
+        if (ttsEnabled && window.speechSynthesis) {
+          const phoneticText = cleanResp
+            .replace(/\bmigo\b/gi, 'mee-go')
+            .replace(/\baiona\b/gi, 'eye-oh-nuh');
+          const utterance = new SpeechSynthesisUtterance(phoneticText);
+          window['_convUtterance_' + idx] = utterance; // prevent Chrome GC bug
+          const voices = window.speechSynthesis.getVoices();
+          utterance.pitch = 1.0 + (idx * 0.15);
+          utterance.rate = 1.05; // Slightly snappier pace for natural dialogue
+          const englishVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
+          if (englishVoice) utterance.voice = englishVoice;
+
+          // Step 1: Cancel previous speech and yield tick
+          if (currentConvTalkPulse) { clearInterval(currentConvTalkPulse); currentConvTalkPulse = null; }
+          window.speechSynthesis.cancel();
+          await new Promise(r => setTimeout(r, 30));
+
+          // Chrome SpeechSynthesis keep-alive interval (prevents Chrome TTS from pausing mid-speech)
+          const keepAliveInterval = setInterval(() => {
+            if (window.speechSynthesis.speaking) {
+              window.speechSynthesis.pause();
+              window.speechSynthesis.resume();
+            }
+          }, 5000);
+
+          // Step 2: Event-driven Speech Promise — advances immediately as soon as speech finishes
+          await new Promise((resolve) => {
+            let resolved = false;
+            let thisTurnPulse = null;
+            let speechStarted = false;
+
+            const finishTurn = () => {
+              if (resolved) return;
+              resolved = true;
+              clearInterval(keepAliveInterval);
+              window['_convUtterance_' + idx] = null;
+              if (thisTurnPulse) clearInterval(thisTurnPulse);
+              if (currentConvTalkPulse === thisTurnPulse) currentConvTalkPulse = null;
+              sendFaceCmdToMigo(migo, 'IDLE');
+              if (!convModeAborted) aionaDoEmotionPhysicalReactionsToMigo(migo, emotion);
+              resolve();
+            };
+
+            // Max safety timeout (12 seconds) so script never gets stuck if browser TTS crashes
+            const safetyTimeout = setTimeout(() => {
+              console.warn(`[ConvMode] Speech timeout safety triggered for ${migoName}`);
+              window.speechSynthesis.cancel();
+              finishTurn();
+            }, Math.min(Math.max(cleanResp.length * 80, 4000), 12000));
+
+            // Synchronize face pulse to utterance.onstart so mouth animation matches audio playback start
+            utterance.onstart = () => {
+              if (speechStarted) return;
+              speechStarted = true;
+              sendFaceCmdToMigo(migo, 'TALK');
+              thisTurnPulse = setInterval(() => {
+                if (convModeActive && !convModeAborted && !resolved) sendFaceCmdToMigo(migo, 'TALK');
+              }, 850);
+              currentConvTalkPulse = thisTurnPulse;
+            };
+
+            let boundaryFired = false;
+            utterance.onboundary = (event) => {
+              if (event.name === 'word' && convModeActive && !convModeAborted) {
+                boundaryFired = true;
+                const remaining = phoneticText.slice(event.charIndex);
+                const wordMatch = remaining.match(/^([a-zA-Z0-9']+)/);
+                if (wordMatch) {
+                  const word = wordMatch[1];
+                  const afterWord = remaining.slice(word.length);
+                  const puncMatch = afterWord.match(/^([.,!?])/);
+                  const punctuation = puncMatch ? puncMatch[1] : '';
+                  triggerWordGestureToMigo(migo, idx, word, punctuation);
+                }
+              }
+            };
+
+            // Fallback word gestures for browsers without boundary events
+            setTimeout(() => {
+              if (!boundaryFired && convModeActive && !convModeAborted && !resolved) {
+                let delayOffset = 0;
+                wordsWithMetadata.forEach((w) => {
+                  setTimeout(() => {
+                    if (convModeActive && !convModeAborted && !resolved) triggerWordGestureToMigo(migo, idx, w.word, w.punctuation);
+                  }, delayOffset);
+                  delayOffset += 400;
+                });
+              }
+            }, 250);
+
+            utterance.onend = () => {
+              clearTimeout(safetyTimeout);
+              finishTurn();
+            };
+
+            utterance.onerror = (e) => {
+              console.warn(`[ConvMode] Speech error on ${migoName}:`, e);
+              clearTimeout(safetyTimeout);
+              finishTurn();
+            };
+
+            // Fallback safeguard if browser onstart event is delayed
+            setTimeout(() => {
+              if (convModeActive && !convModeAborted && !speechStarted && !resolved) {
+                utterance.onstart();
+              }
+            }, 150);
+
+            window.speechSynthesis.speak(utterance);
+          });
+        } else {
+          // No TTS — wait reading delay then trigger emotion physical reaction
+          if (currentConvTalkPulse) { clearInterval(currentConvTalkPulse); currentConvTalkPulse = null; }
+          sendFaceCmdToMigo(migo, 'TALK');
+          const readDelay = Math.min(Math.max(cleanResp.length * 40, 1200), 4500);
+          await new Promise(r => setTimeout(r, readDelay));
+          if (currentConvTalkPulse) { clearInterval(currentConvTalkPulse); currentConvTalkPulse = null; }
+          sendFaceCmdToMigo(migo, 'IDLE');
+          if (!convModeAborted) aionaDoEmotionPhysicalReactionsToMigo(migo, emotion);
+        }
+
+        if (convModeAborted) break;
+
+        // Inter-turn pause
+        await new Promise(r => setTimeout(r, INTER_TURN_DELAY));
+
+        convModeTurnIndex++;
+      }
+    }
 
   </script>
 
