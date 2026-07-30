@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.1.5
+  MIGO Web Controller | Version: 8.1.8
   Change Log:
+  [Jul 30, 2026 11:20 PM] Fix: Clarified OTA firmware link label and description to support GitHub raw links alongside Google Drive.
+  [Jul 30, 2026 11:18 PM] Fix: Repositioned MIGO BLE Robot Name and Global OTA Firmware Update settings after Block Code Inversion in Settings modal.
+  [Jul 30, 2026 11:15 PM] Fix: Limited MIGO BLE custom robot name input to 10 characters in Settings and Start screen to prevent BLE name overflow.
   [Jul 30, 2026 10:15 PM] Fix: OTA "Failed to fetch" CORS error — multi-URL cascade with drive.usercontent.google.com; HTML detection for virus-scan page; CORS error help panel.
   [Jul 30, 2026 10:10 PM] New Feature: OTA firmware version detection via CRC32 hash caching — warns before re-flashing identical firmware, shows last-flashed metadata.
-  [Jul 30, 2026 09:52 PM] Fix: Settings modal responsive layout for narrow phones; BLE name broadcast corrected to use sendCmd instead of sendCmdToMigo (wrong signature).
-  [Jul 30, 2026 09:42 PM] Fix: D-pad & joystick forward blocked by real-time obstacle guard; all AI chat errors now show child-friendly MIGO messages instead of raw HTTP codes.
-  [Jul 30, 2026 09:35 PM] Fix: Restored AIONA Status card & Companion Commands card side-by-side on mobile; added TTS keep-alive for single-MIGO speech; fixed mic echo by using resultIndex in onresult.
 -->
 
 <!DOCTYPE html>
@@ -448,114 +448,6 @@
       </h2>
       <p class="text-[10px] text-white/40 mb-5 uppercase tracking-wider font-semibold">MIGO Controller v8</p>
 
-      <!-- ─── Robot BLE Name Setting ──────────────────────────── -->
-      <div class="mb-6">
-        <p class="text-[10px] text-teal-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
-          <i class="ph-bold ph-bluetooth text-xs"></i> MIGO BLE Robot Name
-        </p>
-        <div class="bg-black/30 border border-white/10 rounded-xl p-4 space-y-3">
-          <div>
-            <label class="text-xs font-semibold text-white/80 mb-1.5 block">BLE Broadcast Name</label>
-            <div class="flex flex-col gap-2">
-              <input type="text" id="bleNameSettingInput" placeholder="e.g. AstroBot" maxlength="15"
-                class="w-full px-3 py-2 text-sm rounded-xl bg-slate-800 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400 font-semibold">
-              <button onclick="saveAndUpdateBleName()"
-                class="w-full py-2 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 rounded-xl font-bold text-xs text-white shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer">
-                <i class="ph-bold ph-floppy-disk"></i> Update BLE Name
-              </button>
-            </div>
-            <div id="bleNameFeedback" class="hidden mt-2 text-[10px] px-3 py-1.5 rounded-lg border font-semibold"></div>
-            <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Updates robot's Bluetooth name (prefix "MIGO_" added automatically). Robot will save to flash and restart in 0.5s.</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- ─── OTA Firmware Update Setting ────────────────────────── -->
-      <div class="mb-6">
-        <p class="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
-          <i class="ph-bold ph-cloud-arrow-down text-xs"></i> Global OTA Firmware Update
-        </p>
-        <div class="bg-black/30 border border-white/10 rounded-xl p-4 space-y-3">
-          <div>
-            <label class="text-xs font-semibold text-white/80 mb-1.5 block">Firmware (.bin) Link or Drive File ID</label>
-            <div class="flex flex-col gap-2">
-              <input type="text" id="otaDriveLinkInput" placeholder="Paste GitHub Release, Google Drive link, or File ID..."
-                class="w-full px-3 py-2 text-sm rounded-xl bg-slate-800 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium">
-              <button id="startOtaBtn" onclick="startOtaUpdateFromGoogleDrive()"
-                class="w-full py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 rounded-xl font-bold text-xs text-white shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer">
-                <i class="ph-bold ph-upload-simple"></i> Flash OTA
-              </button>
-            </div>
-
-            <!-- Last-flashed metadata badge -->
-            <div id="otaLastFlashedBadge" class="hidden mt-2 flex items-start gap-1.5 text-[9px] text-white/40">
-              <i class="ph-bold ph-check-circle text-teal-400 mt-0.5 shrink-0"></i>
-              <span id="otaLastFlashedText"></span>
-            </div>
-
-            <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Paste your Google Drive firmware (.bin) sharing link. Downloads binary via direct link and streams over BLE to MIGO.</p>
-
-            <!-- Same-firmware warning panel (shown before re-flashing identical binary) -->
-            <div id="otaSameFirmwareWarning"
-              class="hidden mt-3 p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-2">
-              <div class="flex items-start gap-2">
-                <i class="ph-bold ph-warning text-amber-400 text-sm mt-0.5 shrink-0"></i>
-                <div class="min-w-0">
-                  <p class="text-[10px] font-bold text-amber-300">Same firmware detected!</p>
-                  <p class="text-[9px] text-white/60 mt-0.5 leading-normal" id="otaSameWarningDetail"></p>
-                </div>
-              </div>
-              <div class="flex gap-2">
-                <button id="otaForceFlashBtn"
-                  class="flex-1 py-1.5 bg-amber-500/30 hover:bg-amber-500/50 border border-amber-500/50 text-amber-200 font-bold text-[10px] rounded-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1">
-                  <i class="ph-bold ph-upload-simple text-xs"></i> Flash Anyway
-                </button>
-                <button onclick="document.getElementById('otaSameFirmwareWarning').classList.add('hidden')"
-                  class="flex-1 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 font-bold text-[10px] rounded-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1">
-                  <i class="ph-bold ph-x text-xs"></i> Cancel
-                </button>
-              </div>
-            </div>
-
-            <!-- OTA Progress UI -->
-            <div id="otaProgressContainer" class="hidden mt-3 pt-3 border-t border-white/10">
-              <div class="flex justify-between items-center mb-1">
-                <span id="otaStatusText" class="text-[10px] font-semibold text-indigo-300">Preparing OTA update...</span>
-                <span id="otaProgressPercent" class="text-[10px] font-bold text-indigo-400">0%</span>
-              </div>
-              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-white/10">
-                <div id="otaProgressBar" class="bg-gradient-to-r from-indigo-500 to-teal-400 h-full w-0 transition-all duration-150"></div>
-              </div>
-              <!-- OTA completion message -->
-              <div id="otaCompleteMsg" class="hidden mt-2 flex items-center gap-1.5 text-[10px] font-bold text-teal-300">
-                <i class="ph-bold ph-check-circle text-sm"></i>
-                <span>Firmware flashed successfully! MIGO is restarting…</span>
-              </div>
-            </div>
-
-            <!-- CORS error help panel -->
-            <div id="otaCorsErrorPanel" class="hidden mt-3 p-3 rounded-xl border border-red-500/40 bg-red-500/10 space-y-2">
-              <div class="flex items-start gap-2">
-                <i class="ph-bold ph-prohibit text-red-400 text-sm mt-0.5 shrink-0"></i>
-                <div class="min-w-0">
-                  <p class="text-[10px] font-bold text-red-300">Browser blocked the download (CORS)</p>
-                  <p class="text-[9px] text-white/60 mt-0.5 leading-normal">Google Drive and GitHub Release downloads block web apps from fetching binary files across origins.</p>
-                </div>
-              </div>
-              <div class="border-t border-white/10 pt-2 space-y-1">
-                <p class="text-[9px] font-bold text-white/70">How to get a working CORS link on GitHub:</p>
-                <p class="text-[9px] text-white/50 leading-normal">① Upload/commit your <span class="font-mono text-white/70">.bin</span> file directly into your GitHub repository (e.g. inside a <span class="font-mono text-white/70">firmware/</span> folder).</p>
-                <p class="text-[9px] text-white/50 leading-normal">② Copy the <span class="font-bold text-white/70">Raw</span> button URL (starts with <span class="font-mono text-white/70">https://raw.githubusercontent.com/...</span>) — this URL has full CORS enabled!</p>
-              </div>
-              <button onclick="document.getElementById('otaCorsErrorPanel').classList.add('hidden')"
-                class="w-full py-1 bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 font-bold text-[9px] rounded-lg active:scale-95 transition-all cursor-pointer">
-                Dismiss
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- ─── Motor Settings ──────────────────────────────────── -->
       <div class="mb-6">
         <p class="text-[10px] text-amber-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
@@ -698,6 +590,118 @@
               <button id="blockLRToggle" onclick="toggleSetting('blockInvertLR')"
                 class="w-10 h-6 bg-slate-700 rounded-full p-0.5 transition-all relative flex items-center cursor-pointer">
                 <span class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Robot BLE Name Setting ──────────────────────────── -->
+      <div class="mb-6">
+        <p class="text-[10px] text-teal-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
+          <i class="ph-bold ph-bluetooth text-xs"></i> MIGO BLE Robot Name
+        </p>
+        <div class="bg-black/30 border border-white/10 rounded-xl p-4 space-y-3">
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-xs font-semibold text-white/80">BLE Broadcast Name</label>
+              <span id="bleNameCharCount" class="text-[10px] text-white/50 font-medium transition-all">0/10</span>
+            </div>
+            <div class="flex flex-col gap-2">
+              <input type="text" id="bleNameSettingInput" placeholder="e.g. AstroBot" maxlength="10"
+                oninput="updateBleNameCharCount(this.value)"
+                class="w-full px-3 py-2 text-sm rounded-xl bg-slate-800 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400 font-semibold">
+              <button onclick="saveAndUpdateBleName()"
+                class="w-full py-2 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 rounded-xl font-bold text-xs text-white shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+                <i class="ph-bold ph-floppy-disk"></i> Update BLE Name
+              </button>
+            </div>
+            <div id="bleNameFeedback" class="hidden mt-2 text-[10px] px-3 py-1.5 rounded-lg border font-semibold"></div>
+            <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Updates robot's Bluetooth name (max 10 chars, prefix "MIGO_" added automatically). Robot will save to flash and restart in 0.5s.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── OTA Firmware Update Setting ────────────────────────── -->
+      <div class="mb-6">
+        <p class="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
+          <i class="ph-bold ph-cloud-arrow-down text-xs"></i> Global OTA Firmware Update
+        </p>
+        <div class="bg-black/30 border border-white/10 rounded-xl p-4 space-y-3">
+          <div>
+            <label class="text-xs font-semibold text-white/80 mb-1.5 block">Firmware (.bin) GitHub or Google Drive Link</label>
+            <div class="flex flex-col gap-2">
+              <input type="text" id="otaDriveLinkInput" placeholder="Paste GitHub Release, Google Drive link, or File ID..."
+                class="w-full px-3 py-2 text-sm rounded-xl bg-slate-800 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium">
+              <button id="startOtaBtn" onclick="startOtaUpdateFromGoogleDrive()"
+                class="w-full py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 rounded-xl font-bold text-xs text-white shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+                <i class="ph-bold ph-upload-simple"></i> Flash OTA
+              </button>
+            </div>
+
+            <!-- Last-flashed metadata badge -->
+            <div id="otaLastFlashedBadge" class="hidden mt-2 flex items-start gap-1.5 text-[9px] text-white/40">
+              <i class="ph-bold ph-check-circle text-teal-400 mt-0.5 shrink-0"></i>
+              <span id="otaLastFlashedText"></span>
+            </div>
+
+            <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Paste your GitHub raw link or Google Drive firmware (.bin) sharing link. Downloads binary via direct link and streams over BLE to MIGO.</p>
+
+            <!-- Same-firmware warning panel (shown before re-flashing identical binary) -->
+            <div id="otaSameFirmwareWarning"
+              class="hidden mt-3 p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-2">
+              <div class="flex items-start gap-2">
+                <i class="ph-bold ph-warning text-amber-400 text-sm mt-0.5 shrink-0"></i>
+                <div class="min-w-0">
+                  <p class="text-[10px] font-bold text-amber-300">Same firmware detected!</p>
+                  <p class="text-[9px] text-white/60 mt-0.5 leading-normal" id="otaSameWarningDetail"></p>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <button id="otaForceFlashBtn"
+                  class="flex-1 py-1.5 bg-amber-500/30 hover:bg-amber-500/50 border border-amber-500/50 text-amber-200 font-bold text-[10px] rounded-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1">
+                  <i class="ph-bold ph-upload-simple text-xs"></i> Flash Anyway
+                </button>
+                <button onclick="document.getElementById('otaSameFirmwareWarning').classList.add('hidden')"
+                  class="flex-1 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 font-bold text-[10px] rounded-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1">
+                  <i class="ph-bold ph-x text-xs"></i> Cancel
+                </button>
+              </div>
+            </div>
+
+            <!-- OTA Progress UI -->
+            <div id="otaProgressContainer" class="hidden mt-3 pt-3 border-t border-white/10">
+              <div class="flex justify-between items-center mb-1">
+                <span id="otaStatusText" class="text-[10px] font-semibold text-indigo-300">Preparing OTA update...</span>
+                <span id="otaProgressPercent" class="text-[10px] font-bold text-indigo-400">0%</span>
+              </div>
+              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-white/10">
+                <div id="otaProgressBar" class="bg-gradient-to-r from-indigo-500 to-teal-400 h-full w-0 transition-all duration-150"></div>
+              </div>
+              <!-- OTA completion message -->
+              <div id="otaCompleteMsg" class="hidden mt-2 flex items-center gap-1.5 text-[10px] font-bold text-teal-300">
+                <i class="ph-bold ph-check-circle text-sm"></i>
+                <span>Firmware flashed successfully! MIGO is restarting…</span>
+              </div>
+            </div>
+
+            <!-- CORS error help panel -->
+            <div id="otaCorsErrorPanel" class="hidden mt-3 p-3 rounded-xl border border-red-500/40 bg-red-500/10 space-y-2">
+              <div class="flex items-start gap-2">
+                <i class="ph-bold ph-prohibit text-red-400 text-sm mt-0.5 shrink-0"></i>
+                <div class="min-w-0">
+                  <p class="text-[10px] font-bold text-red-300">Browser blocked the download (CORS)</p>
+                  <p class="text-[9px] text-white/60 mt-0.5 leading-normal">Google Drive and GitHub Release downloads block web apps from fetching binary files across origins.</p>
+                </div>
+              </div>
+              <div class="border-t border-white/10 pt-2 space-y-1">
+                <p class="text-[9px] font-bold text-white/70">How to get a working CORS link on GitHub:</p>
+                <p class="text-[9px] text-white/50 leading-normal">① Upload/commit your <span class="font-mono text-white/70">.bin</span> file directly into your GitHub repository (e.g. inside a <span class="font-mono text-white/70">firmware/</span> folder).</p>
+                <p class="text-[9px] text-white/50 leading-normal">② Copy the <span class="font-bold text-white/70">Raw</span> button URL (starts with <span class="font-mono text-white/70">https://raw.githubusercontent.com/...</span>) — this URL has full CORS enabled!</p>
+              </div>
+              <button onclick="document.getElementById('otaCorsErrorPanel').classList.add('hidden')"
+                class="w-full py-1 bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 font-bold text-[9px] rounded-lg active:scale-95 transition-all cursor-pointer">
+                Dismiss
               </button>
             </div>
           </div>
@@ -2093,6 +2097,20 @@
       }
     }
 
+    function updateBleNameCharCount(val) {
+      let clean = (val || '').replace(/^MIGO_/i, '');
+      const count = clean.length;
+      const counter = document.getElementById('bleNameCharCount');
+      if (counter) {
+        counter.innerText = `${count}/10`;
+        if (count >= 10) {
+          counter.className = "text-[10px] text-teal-400 font-bold animate-pulse";
+        } else {
+          counter.className = "text-[10px] text-white/50 font-medium";
+        }
+      }
+    }
+
     function selectTier(tier) {
       selectedTier = tier;
       const t1 = document.getElementById('tier1Card');
@@ -2122,7 +2140,9 @@
 
     function startApp() {
       if (selectedTier === 0) return;
-      const name = document.getElementById('robotNameInput').value.trim() || 'MIGO Bot';
+      const rawName = document.getElementById('robotNameInput').value.trim() || 'MIGO Bot';
+      let name = rawName.replace(/^MIGO_/i, '');
+      if (name.length > 10) name = name.substring(0, 10);
       localStorage.setItem('migoRobotName', name);
       document.querySelectorAll('.robotTitleEl').forEach(el => el.innerText = name);
 
@@ -8252,7 +8272,11 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       // Sync BLE Robot Name input
       const bleInput = document.getElementById('bleNameSettingInput');
       if (bleInput) {
-        bleInput.value = localStorage.getItem('migoRobotName') || (connectedMigos[0]?.device?.name) || 'MIGO_Bot';
+        let stored = localStorage.getItem('migoRobotName') || (connectedMigos[0]?.device?.name) || 'MIGO_Bot';
+        let customOnly = stored.replace(/^MIGO_/i, '');
+        if (customOnly.length > 10) customOnly = customOnly.substring(0, 10);
+        bleInput.value = customOnly;
+        updateBleNameCharCount(customOnly);
       }
 
       // Refresh OTA last-flashed badge
@@ -8270,7 +8294,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       const input = document.getElementById('bleNameSettingInput');
       const feedback = document.getElementById('bleNameFeedback');
       if (!input) return;
-      let newName = input.value.trim();
+      let rawVal = input.value.trim();
 
       const showFeedback = (msg, isError = false) => {
         if (!feedback) return;
@@ -8284,15 +8308,19 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         setTimeout(() => feedback.classList.add('hidden'), 4000);
       };
 
-      if (!newName) {
+      if (!rawVal) {
         showFeedback('⚠️ Please enter a valid BLE robot name.', true);
         return;
       }
-      if (!newName.startsWith('MIGO_') && !newName.startsWith('Migo_') && !newName.startsWith('migo_')) {
-        newName = 'MIGO_' + newName;
+
+      let customName = rawVal.replace(/^MIGO_/i, '').trim();
+      if (customName.length > 10) {
+        customName = customName.substring(0, 10);
       }
-      localStorage.setItem('migoRobotName', newName);
-      document.querySelectorAll('.robotTitleEl').forEach(el => el.innerText = newName);
+      let newName = 'MIGO_' + customName;
+
+      localStorage.setItem('migoRobotName', customName);
+      document.querySelectorAll('.robotTitleEl').forEach(el => el.innerText = customName);
 
       const activeMigos = typeof connectedMigos !== 'undefined' ? connectedMigos.filter(m => m.active) : [];
       if (activeMigos.length > 0) {
