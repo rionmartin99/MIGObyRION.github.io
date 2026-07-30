@@ -477,9 +477,9 @@
         </p>
         <div class="bg-black/30 border border-white/10 rounded-xl p-4 space-y-3">
           <div>
-            <label class="text-xs font-semibold text-white/80 mb-1.5 block">Google Drive Link or File ID</label>
+            <label class="text-xs font-semibold text-white/80 mb-1.5 block">Firmware (.bin) Link or Drive File ID</label>
             <div class="flex flex-col gap-2">
-              <input type="text" id="otaDriveLinkInput" placeholder="Paste Google Drive share link or File ID..."
+              <input type="text" id="otaDriveLinkInput" placeholder="Paste GitHub Release, Google Drive link, or File ID..."
                 class="w-full px-3 py-2 text-sm rounded-xl bg-slate-800 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium">
               <button id="startOtaBtn" onclick="startOtaUpdateFromGoogleDrive()"
                 class="w-full py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 rounded-xl font-bold text-xs text-white shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer">
@@ -539,13 +539,13 @@
                 <i class="ph-bold ph-prohibit text-red-400 text-sm mt-0.5 shrink-0"></i>
                 <div class="min-w-0">
                   <p class="text-[10px] font-bold text-red-300">Browser blocked the download (CORS)</p>
-                  <p class="text-[9px] text-white/60 mt-0.5 leading-normal">Your browser's security rules prevented fetching directly from Google Drive. This is normal — Google Drive doesn't allow cross-origin downloads from web pages.</p>
+                  <p class="text-[9px] text-white/60 mt-0.5 leading-normal">Google Drive and GitHub Release downloads block web apps from fetching binary files across origins.</p>
                 </div>
               </div>
               <div class="border-t border-white/10 pt-2 space-y-1">
-                <p class="text-[9px] font-bold text-white/70">How to fix:</p>
-                <p class="text-[9px] text-white/50 leading-normal">① Open the Drive link in a new browser tab and download the <span class="font-mono text-white/70">.bin</span> file manually.</p>
-                <p class="text-[9px] text-white/50 leading-normal">② Host the <span class="font-mono text-white/70">.bin</span> on <span class="font-bold text-white/70">GitHub Releases</span> (free, public) — paste the raw GitHub download URL instead.</p>
+                <p class="text-[9px] font-bold text-white/70">How to get a working CORS link on GitHub:</p>
+                <p class="text-[9px] text-white/50 leading-normal">① Upload/commit your <span class="font-mono text-white/70">.bin</span> file directly into your GitHub repository (e.g. inside a <span class="font-mono text-white/70">firmware/</span> folder).</p>
+                <p class="text-[9px] text-white/50 leading-normal">② Copy the <span class="font-bold text-white/70">Raw</span> button URL (starts with <span class="font-mono text-white/70">https://raw.githubusercontent.com/...</span>) — this URL has full CORS enabled!</p>
               </div>
               <button onclick="document.getElementById('otaCorsErrorPanel').classList.add('hidden')"
                 class="w-full py-1 bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 font-bold text-[9px] rounded-lg active:scale-95 transition-all cursor-pointer">
@@ -8410,10 +8410,6 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       // Hide any previous same-firmware warning
       if (warning) warning.classList.add('hidden');
 
-      let fileId = rawInput;
-      const fileIdMatch = rawInput.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || rawInput.match(/id=([a-zA-Z0-9_-]+)/);
-      if (fileIdMatch?.[1]) fileId = fileIdMatch[1];
-
       if (!connectedMigos || connectedMigos.length === 0) {
         if (detail) detail.textContent = '⚠️ No MIGO robot connected! Please connect over BLE first.';
         if (warning) { warning.classList.remove('hidden'); setTimeout(() => warning.classList.add('hidden'), 4000); }
@@ -8425,6 +8421,54 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         if (detail) detail.textContent = '⚠️ Bluetooth connection error. Please reconnect to MIGO.';
         if (warning) { warning.classList.remove('hidden'); setTimeout(() => warning.classList.add('hidden'), 4000); }
         return;
+      }
+
+      // ── Determine URL strategies ──
+      let urlStrategies = [];
+      if (rawInput.startsWith('http://') || rawInput.startsWith('https://')) {
+        if (rawInput.includes('drive.google.com')) {
+          let fileId = rawInput;
+          const fileIdMatch = rawInput.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || rawInput.match(/id=([a-zA-Z0-9_-]+)/);
+          if (fileIdMatch?.[1]) fileId = fileIdMatch[1];
+          urlStrategies = [
+            `https://drive.usercontent.google.com/download?id=${fileId}&export=download&authuser=0&confirm=t`,
+            `https://drive.google.com/uc?export=download&confirm=t&id=${fileId}`,
+          ];
+        } else if (rawInput.includes('github.com')) {
+          // GitHub URLs — attempt direct fetch, then raw.githubusercontent.com & GitHub Pages fallbacks
+          urlStrategies = [ rawInput ];
+
+          // Match github.com/{owner}/{repo}/raw/{path}
+          const rawMatch = rawInput.match(/github\.com\/([^/]+)\/([^/]+)\/raw\/(.+)$/);
+          if (rawMatch) {
+            const [, owner, repo, path] = rawMatch;
+            urlStrategies.push(`https://raw.githubusercontent.com/${owner}/${repo}/${path}`);
+          }
+
+          const relMatch = rawInput.match(/github\.com\/([^/]+)\/([^/]+)\/releases\/download\/([^/]+)\/(.+)$/);
+          if (relMatch) {
+            const [, owner, repo, tag, filename] = relMatch;
+            urlStrategies.push(`https://raw.githubusercontent.com/${owner}/${repo}/${tag}/${filename}`);
+            urlStrategies.push(`https://raw.githubusercontent.com/${owner}/${repo}/main/${filename}`);
+            urlStrategies.push(`https://raw.githubusercontent.com/${owner}/${repo}/master/${filename}`);
+            urlStrategies.push(`https://${owner}.github.io/${repo}/${filename}`);
+          }
+
+          const blobMatch = rawInput.match(/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/);
+          if (blobMatch) {
+            const [, owner, repo, branch, filepath] = blobMatch;
+            urlStrategies.push(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filepath}`);
+          }
+        } else {
+          // Direct HTTP(S) link
+          urlStrategies = [ rawInput ];
+        }
+      } else {
+        // Plain Google Drive File ID
+        urlStrategies = [
+          `https://drive.usercontent.google.com/download?id=${rawInput}&export=download&authuser=0&confirm=t`,
+          `https://drive.google.com/uc?export=download&confirm=t&id=${rawInput}`,
+        ];
       }
 
       try {
@@ -8440,14 +8484,6 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         percentText.innerText  = '0%';
         progressBar.style.width = '0%';
         document.getElementById('otaCorsErrorPanel')?.classList.add('hidden');
-
-        // ── Try multiple Drive URL strategies (CORS cascade) ──
-        // Strategy 1: drive.usercontent.google.com (newer, handles virus scan, better CORS)
-        // Strategy 2: legacy uc?export=download (classic, may CORS-block)
-        const urlStrategies = [
-          `https://drive.usercontent.google.com/download?id=${fileId}&export=download&authuser=0&confirm=t`,
-          `https://drive.google.com/uc?export=download&confirm=t&id=${fileId}`,
-        ];
 
         let response = null;
         let lastErr  = null;
