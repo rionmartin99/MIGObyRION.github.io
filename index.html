@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.0.0
+  MIGO Web Controller | Version: 8.1.5
   Change Log:
-  [Jul 29, 2026 01:55 PM] New Feature: Added flexible BLE namePrefix matching and custom robot renaming UI support for Version 8.0.0.
-  [Jul 29, 2026 11:47 AM] Fix: Restored missing phoneticText variable definition in single-MIGO chat.
-  [Jul 29, 2026 11:45 AM] Fix: Synchronized Conversation Mode face animation and gestures to utterance.onstart, eliminating turn TTS lag across all MIGOs.
-  [Jul 29, 2026 11:42 AM] Fix: Single-MIGO mouth animation & physical gestures now synchronize to utterance.onstart, eliminating voice lag after text generation.
-  [Jul 29, 2026 11:32 AM] Fix: Replaced fixed turn timeouts with event-driven TTS promises + Chrome pause keep-alive. Eliminates turn lag & stuck speaking state.
+  [Jul 30, 2026 10:15 PM] Fix: OTA "Failed to fetch" CORS error — multi-URL cascade with drive.usercontent.google.com; HTML detection for virus-scan page; CORS error help panel.
+  [Jul 30, 2026 10:10 PM] New Feature: OTA firmware version detection via CRC32 hash caching — warns before re-flashing identical firmware, shows last-flashed metadata.
+  [Jul 30, 2026 09:52 PM] Fix: Settings modal responsive layout for narrow phones; BLE name broadcast corrected to use sendCmd instead of sendCmdToMigo (wrong signature).
+  [Jul 30, 2026 09:42 PM] Fix: D-pad & joystick forward blocked by real-time obstacle guard; all AI chat errors now show child-friendly MIGO messages instead of raw HTTP codes.
+  [Jul 30, 2026 09:35 PM] Fix: Restored AIONA Status card & Companion Commands card side-by-side on mobile; added TTS keep-alive for single-MIGO speech; fixed mic echo by using resultIndex in onresult.
 -->
 
 <!DOCTYPE html>
@@ -456,15 +456,102 @@
         <div class="bg-black/30 border border-white/10 rounded-xl p-4 space-y-3">
           <div>
             <label class="text-xs font-semibold text-white/80 mb-1.5 block">BLE Broadcast Name</label>
-            <div class="flex gap-2">
+            <div class="flex flex-col gap-2">
               <input type="text" id="bleNameSettingInput" placeholder="e.g. AstroBot" maxlength="15"
-                class="flex-1 px-3 py-2 text-sm rounded-xl bg-slate-800 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400 font-semibold">
+                class="w-full px-3 py-2 text-sm rounded-xl bg-slate-800 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400 font-semibold">
               <button onclick="saveAndUpdateBleName()"
-                class="px-3.5 py-2 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 rounded-xl font-bold text-xs text-white shadow-md active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shrink-0">
+                class="w-full py-2 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 rounded-xl font-bold text-xs text-white shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer">
                 <i class="ph-bold ph-floppy-disk"></i> Update BLE Name
               </button>
             </div>
+            <div id="bleNameFeedback" class="hidden mt-2 text-[10px] px-3 py-1.5 rounded-lg border font-semibold"></div>
             <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Updates robot's Bluetooth name (prefix "MIGO_" added automatically). Robot will save to flash and restart in 0.5s.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── OTA Firmware Update Setting ────────────────────────── -->
+      <div class="mb-6">
+        <p class="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
+          <i class="ph-bold ph-cloud-arrow-down text-xs"></i> Global OTA Firmware Update
+        </p>
+        <div class="bg-black/30 border border-white/10 rounded-xl p-4 space-y-3">
+          <div>
+            <label class="text-xs font-semibold text-white/80 mb-1.5 block">Google Drive Link or File ID</label>
+            <div class="flex flex-col gap-2">
+              <input type="text" id="otaDriveLinkInput" placeholder="Paste Google Drive share link or File ID..."
+                class="w-full px-3 py-2 text-sm rounded-xl bg-slate-800 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium">
+              <button id="startOtaBtn" onclick="startOtaUpdateFromGoogleDrive()"
+                class="w-full py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 rounded-xl font-bold text-xs text-white shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+                <i class="ph-bold ph-upload-simple"></i> Flash OTA
+              </button>
+            </div>
+
+            <!-- Last-flashed metadata badge -->
+            <div id="otaLastFlashedBadge" class="hidden mt-2 flex items-start gap-1.5 text-[9px] text-white/40">
+              <i class="ph-bold ph-check-circle text-teal-400 mt-0.5 shrink-0"></i>
+              <span id="otaLastFlashedText"></span>
+            </div>
+
+            <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Paste your Google Drive firmware (.bin) sharing link. Downloads binary via direct link and streams over BLE to MIGO.</p>
+
+            <!-- Same-firmware warning panel (shown before re-flashing identical binary) -->
+            <div id="otaSameFirmwareWarning"
+              class="hidden mt-3 p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 space-y-2">
+              <div class="flex items-start gap-2">
+                <i class="ph-bold ph-warning text-amber-400 text-sm mt-0.5 shrink-0"></i>
+                <div class="min-w-0">
+                  <p class="text-[10px] font-bold text-amber-300">Same firmware detected!</p>
+                  <p class="text-[9px] text-white/60 mt-0.5 leading-normal" id="otaSameWarningDetail"></p>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <button id="otaForceFlashBtn"
+                  class="flex-1 py-1.5 bg-amber-500/30 hover:bg-amber-500/50 border border-amber-500/50 text-amber-200 font-bold text-[10px] rounded-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1">
+                  <i class="ph-bold ph-upload-simple text-xs"></i> Flash Anyway
+                </button>
+                <button onclick="document.getElementById('otaSameFirmwareWarning').classList.add('hidden')"
+                  class="flex-1 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 font-bold text-[10px] rounded-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1">
+                  <i class="ph-bold ph-x text-xs"></i> Cancel
+                </button>
+              </div>
+            </div>
+
+            <!-- OTA Progress UI -->
+            <div id="otaProgressContainer" class="hidden mt-3 pt-3 border-t border-white/10">
+              <div class="flex justify-between items-center mb-1">
+                <span id="otaStatusText" class="text-[10px] font-semibold text-indigo-300">Preparing OTA update...</span>
+                <span id="otaProgressPercent" class="text-[10px] font-bold text-indigo-400">0%</span>
+              </div>
+              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-white/10">
+                <div id="otaProgressBar" class="bg-gradient-to-r from-indigo-500 to-teal-400 h-full w-0 transition-all duration-150"></div>
+              </div>
+              <!-- OTA completion message -->
+              <div id="otaCompleteMsg" class="hidden mt-2 flex items-center gap-1.5 text-[10px] font-bold text-teal-300">
+                <i class="ph-bold ph-check-circle text-sm"></i>
+                <span>Firmware flashed successfully! MIGO is restarting…</span>
+              </div>
+            </div>
+
+            <!-- CORS error help panel -->
+            <div id="otaCorsErrorPanel" class="hidden mt-3 p-3 rounded-xl border border-red-500/40 bg-red-500/10 space-y-2">
+              <div class="flex items-start gap-2">
+                <i class="ph-bold ph-prohibit text-red-400 text-sm mt-0.5 shrink-0"></i>
+                <div class="min-w-0">
+                  <p class="text-[10px] font-bold text-red-300">Browser blocked the download (CORS)</p>
+                  <p class="text-[9px] text-white/60 mt-0.5 leading-normal">Your browser's security rules prevented fetching directly from Google Drive. This is normal — Google Drive doesn't allow cross-origin downloads from web pages.</p>
+                </div>
+              </div>
+              <div class="border-t border-white/10 pt-2 space-y-1">
+                <p class="text-[9px] font-bold text-white/70">How to fix:</p>
+                <p class="text-[9px] text-white/50 leading-normal">① Open the Drive link in a new browser tab and download the <span class="font-mono text-white/70">.bin</span> file manually.</p>
+                <p class="text-[9px] text-white/50 leading-normal">② Host the <span class="font-mono text-white/70">.bin</span> on <span class="font-bold text-white/70">GitHub Releases</span> (free, public) — paste the raw GitHub download URL instead.</p>
+              </div>
+              <button onclick="document.getElementById('otaCorsErrorPanel').classList.add('hidden')"
+                class="w-full py-1 bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 font-bold text-[9px] rounded-lg active:scale-95 transition-all cursor-pointer">
+                Dismiss
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -631,11 +718,11 @@
                 Set</span>
             </div>
 
-            <div class="flex gap-2">
+            <div class="flex flex-col gap-2">
               <input type="password" id="settingsApiKeyInput" placeholder="AIzaSy..."
-                class="flex-grow p-2.5 rounded-xl bg-black/40 border border-white/20 text-white text-xs placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all text-center">
+                class="w-full p-2.5 rounded-xl bg-black/40 border border-white/20 text-white text-xs placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all text-center">
               <button onclick="testAndSaveSettingsApiKey()"
-                class="px-4 bg-gradient-to-r from-teal-500 to-amber-500 hover:from-teal-400 hover:to-amber-400 text-black font-bold text-xs rounded-xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer shrink-0">
+                class="w-full py-2.5 bg-gradient-to-r from-teal-500 to-amber-500 hover:from-teal-400 hover:to-amber-400 text-black font-bold text-xs rounded-xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer">
                 <i class="ph-bold ph-lightning"></i> Unlock
               </button>
             </div>
@@ -1736,6 +1823,8 @@
 
       <!-- Left Column: Cognitive State Orb, Manual triggers, Waveform -->
       <div class="w-full md:w-80 shrink-0 flex flex-col gap-2 md:gap-3">
+        <!-- Mobile: Status & Companion Commands row -->
+        <div class="grid grid-cols-2 md:contents gap-2">
 
         <!-- Cognitive State & Orb Panel -->
         <div
@@ -1775,7 +1864,7 @@
         </div>
 
         <!-- Quick Manual Action Board -->
-        <div class="glass-panel p-3 flex flex-col gap-2.5 flex-initial">
+        <div class="glass-panel p-3 flex flex-col gap-2.5 flex-initial md:col-auto">
           <h3 class="text-[10px] font-bold text-teal-300 uppercase tracking-widest flex items-center gap-1.5"><i
               class="ph-bold ph-sparkle text-xs animate-spin" style="animation-duration: 4s;"></i> Companion Commands
           </h3>
@@ -1813,6 +1902,8 @@
             </div>
           </div>
         </div>
+
+        </div><!-- end mobile side-by-side row -->
 
       </div>
 
@@ -1940,6 +2031,9 @@
     const serviceUuid = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
     const charWriteUuid = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
     const charReadUuid = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
+    const otaServiceUuid = "6e400010-b5a3-f393-e0a9-e50e24dcca9e";
+    const otaCharUuid    = "6e400011-b5a3-f393-e0a9-e50e24dcca9e";
 
     let connectedVersionVal = "v3";
     Object.defineProperty(window, 'connectedVersion', {
@@ -3065,7 +3159,7 @@
             { name: 'Migo_Web_Bot_v2' },
             { name: 'Migo_Web_Bot' }
           ],
-          optionalServices: [serviceUuid]
+          optionalServices: [serviceUuid, otaServiceUuid]
         });
 
         if (connectedMigos.some(m => m.device.id === device.id)) {
@@ -5642,13 +5736,13 @@ ${JSON.stringify(workspaceState, null, 2)}
           (err) => {
             showTypingIndicator(false);
             if (streamBubble.parentNode) streamBubble.remove();
-            appendMessage('migo', "Error: " + (err.message || "Brain connection failed."));
+            appendMessage('migo', friendlyErrorMessage(err));
           }
         );
       } catch (e) {
         showTypingIndicator(false);
         if (streamBubble.parentNode) streamBubble.remove();
-        appendMessage('migo', "I was unable to connect to the tutor engine. Please check your internet connection.");
+        appendMessage('migo', friendlyErrorMessage(e));
       }
     }
 
@@ -5704,6 +5798,50 @@ ${JSON.stringify(workspaceState, null, 2)}
     }
 
     // --- TTS (Text-to-Speech) ---
+    // ─────────────────────────────────────────────────────────────
+    // FRIENDLY ERROR MESSAGES — converts raw API/network errors into
+    // child-friendly MIGO-personality explanations shown in chat.
+    // ─────────────────────────────────────────────────────────────
+    function friendlyErrorMessage(err) {
+      const msg = (err?.message || err?.error?.message || String(err || '')).toLowerCase();
+      const status = err?.status || 0;
+
+      // Rate limit / quota exhausted (HTTP 429)
+      if (status === 429 || msg.includes('429') || msg.includes('quota') || msg.includes('rate limit') || msg.includes('too many requests') || msg.includes('resource_exhausted')) {
+        return "😴 Whoa, I talked so much that I need a little nap! My brain gets tired when it thinks too fast. Please wait a moment and try again — I'll be back in a jiffy!";
+      }
+      // Service unavailable / overloaded (HTTP 503 / 502)
+      if (status === 503 || status === 502 || msg.includes('503') || msg.includes('502') || msg.includes('overloaded') || msg.includes('service unavailable') || msg.includes('bad gateway')) {
+        return "🏗️ Hmm, my brain's cloud servers are a little busy right now — like a really long lunch break! Give it a few seconds and then try asking me again.";
+      }
+      // Internal server error (HTTP 500)
+      if (status === 500 || msg.includes('500') || msg.includes('internal server error')) {
+        return "😵 Oops! Something went a little wonky on the inside of my brain. It's not your fault at all! Try again in a moment and I should be okay.";
+      }
+      // Unauthorized / invalid API key (HTTP 401)
+      if (status === 401 || msg.includes('401') || msg.includes('unauthorized') || msg.includes('api key not valid') || msg.includes('invalid api key')) {
+        return "🔑 Uh-oh! It looks like my secret key isn't working right now. Please ask a grown-up to check the API key in the Settings panel.";
+      }
+      // Forbidden / access denied (HTTP 403)
+      if (status === 403 || msg.includes('403') || msg.includes('forbidden') || msg.includes('permission denied')) {
+        return "🚫 My brain said 'Access Denied' — kind of like when a door is locked! Please check the API key in Settings, or ask a grown-up for help.";
+      }
+      // Model not found / bad request (HTTP 400 / 404)
+      if (status === 400 || status === 404 || msg.includes('400') || msg.includes('404') || msg.includes('not found') || msg.includes('not available') || msg.includes('invalid argument')) {
+        return "🤔 I got a little confused and couldn't find the right answer path. This sometimes happens when settings aren't quite right. Try again or ask a grown-up to check the API settings!";
+      }
+      // Network / offline
+      if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('network') || msg.includes('internet') || msg.includes('offline') || msg.includes('connection')) {
+        return "📡 I can't reach my brain cloud right now! It looks like the internet might be sleeping. Please check the Wi-Fi and try again.";
+      }
+      // Timeout
+      if (msg.includes('timeout') || msg.includes('timed out') || msg.includes('deadline')) {
+        return "⏰ My brain took too long to think — even robots need a timeout sometimes! Please try asking me again.";
+      }
+      // Generic / unknown fallback
+      return "😅 Something unexpected happened while I was thinking! Don't worry though — just try again and I'll do my best. If it keeps happening, ask a grown-up to check the Settings.";
+    }
+
     function speakText(text) {
       if (!window.speechSynthesis) return;
       window.speechSynthesis.cancel();
@@ -6344,11 +6482,16 @@ ${JSON.stringify(workspaceState, null, 2)}
 
       aionaManualRecognition.onresult = (e) => {
         hasUserSpoken = true;
+        // Only accumulate from e.resultIndex onward to prevent echo/repeated words
+        // on mobile where older results are re-delivered on each event
         let text = "";
-        for (let i = 0; i < e.results.length; i++) {
+        for (let i = e.resultIndex; i < e.results.length; i++) {
           text += e.results[i][0].transcript;
         }
-        if (transcriptEl) transcriptEl.innerText = `"${text}"`;
+        // Append to the existing displayed transcript for continuity across events
+        const existing = transcriptEl ? transcriptEl.innerText.replace(/^"|"$/g, '') : '';
+        const combined = (existing === '...' ? '' : existing) + text;
+        if (transcriptEl) transcriptEl.innerText = `"${combined.trim()}"`;
         resetAionaSilenceTimer(false); // Reset silence timer on every chunk of speech
       };
 
@@ -6994,8 +7137,9 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           appendAionaMessage('aiona', cleanResponse);
           aionaExecuteResponseBehavior(cleanResponse, emotion, commands, text);
         } else {
-          const err = await res.json();
-          appendAionaMessage('aiona', "I encountered a little cloud in my neural core: " + (err.error?.message || "Check API configuration."));
+          const errJson = await res.json().catch(() => ({}));
+          const syntheticErr = { message: errJson.error?.message || '', status: res.status };
+          appendAionaMessage('aiona', friendlyErrorMessage(syntheticErr));
           sendCmd('CMD:FACE:IDLE');
           smoothLowerArm(true);
           setAionaState('idle');
@@ -7003,7 +7147,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         }
       } catch (e) {
         console.error(e);
-        appendAionaMessage('aiona', "I'm having trouble connecting to my central brain. Make sure you have active internet!");
+        appendAionaMessage('aiona', friendlyErrorMessage(e));
         sendCmd('CMD:FACE:IDLE');
         smoothLowerArm(true);
         setAionaState('idle');
@@ -7167,6 +7311,14 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
         aionaSpeechRunning = true;
 
+        // Chrome/Mobile SpeechSynthesis keep-alive — prevents TTS from silently pausing mid-sentence on mobile
+        const aionaSpeechKeepAlive = setInterval(() => {
+          if (window.speechSynthesis.speaking) {
+            window.speechSynthesis.pause();
+            window.speechSynthesis.resume();
+          }
+        }, 5000);
+
         let boundaryFired = false;
         let speechStarted = false;
 
@@ -7232,6 +7384,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         }, 350);
 
         utterance.onend = () => {
+          clearInterval(aionaSpeechKeepAlive);
           aionaSpeechRunning = false;
           window.activeAionaUtterance = null;
           if (aionaTalkPulseInterval) {
@@ -7257,6 +7410,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         };
 
         utterance.onerror = () => {
+          clearInterval(aionaSpeechKeepAlive);
           aionaSpeechRunning = false;
           window.activeAionaUtterance = null;
           if (aionaTalkPulseInterval) {
@@ -8101,6 +8255,9 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         bleInput.value = localStorage.getItem('migoRobotName') || (connectedMigos[0]?.device?.name) || 'MIGO_Bot';
       }
 
+      // Refresh OTA last-flashed badge
+      refreshOtaLastFlashedBadge();
+
       document.getElementById('settingsModal').classList.remove('hidden');
     }
 
@@ -8111,25 +8268,273 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
     function saveAndUpdateBleName() {
       const input = document.getElementById('bleNameSettingInput');
+      const feedback = document.getElementById('bleNameFeedback');
       if (!input) return;
       let newName = input.value.trim();
+
+      const showFeedback = (msg, isError = false) => {
+        if (!feedback) return;
+        feedback.className = `mt-2 text-[10px] px-3 py-1.5 rounded-lg border font-semibold ${
+          isError
+            ? 'text-red-300 bg-red-500/15 border-red-500/40'
+            : 'text-teal-300 bg-teal-500/15 border-teal-500/40'
+        }`;
+        feedback.textContent = msg;
+        feedback.classList.remove('hidden');
+        setTimeout(() => feedback.classList.add('hidden'), 4000);
+      };
+
       if (!newName) {
-        alert("Please enter a valid BLE robot name.");
+        showFeedback('⚠️ Please enter a valid BLE robot name.', true);
         return;
       }
-      if (!newName.startsWith("MIGO_") && !newName.startsWith("Migo_") && !newName.startsWith("migo_")) {
-        newName = "MIGO_" + newName;
+      if (!newName.startsWith('MIGO_') && !newName.startsWith('Migo_') && !newName.startsWith('migo_')) {
+        newName = 'MIGO_' + newName;
       }
       localStorage.setItem('migoRobotName', newName);
       document.querySelectorAll('.robotTitleEl').forEach(el => el.innerText = newName);
 
-      if (connectedMigos.length > 0) {
-        sendCmdToMigo(`CMD:SET_NAME:${newName}`);
-        alert(`Updating BLE name to "${newName}" on MIGO...\n\nThe robot will save this to flash memory and restart automatically in 0.5s.`);
+      const activeMigos = typeof connectedMigos !== 'undefined' ? connectedMigos.filter(m => m.active) : [];
+      if (activeMigos.length > 0) {
+        // sendCmd broadcasts to ALL active MIGOs via their writeChar — correct usage
+        sendCmd(`CMD:SET_NAME:${newName}`);
+        showFeedback(`✅ Sent "${newName}" to MIGO! Robot will restart in ~0.5s.`);
       } else {
-        alert(`Local name saved as "${newName}".\n\nWhen connected to MIGO over BLE, tap "Update BLE Name" to send it to the robot.`);
+        showFeedback(`💾 Saved "${newName}" locally. Connect MIGO over BLE to push this name to the robot.`);
       }
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // CRC32 hash — lightweight firmware fingerprint, no libraries needed
+    // ─────────────────────────────────────────────────────────────
+    function computeCRC32(bytes) {
+      let crc = 0xFFFFFFFF;
+      for (let i = 0; i < bytes.length; i++) {
+        crc ^= bytes[i];
+        for (let j = 0; j < 8; j++) {
+          crc = (crc & 1) ? (crc >>> 1) ^ 0xEDB88320 : crc >>> 1;
+        }
+      }
+      return ((crc ^ 0xFFFFFFFF) >>> 0).toString(16).padStart(8, '0').toUpperCase();
+    }
+
+    // Show last-flashed badge in the OTA card
+    function refreshOtaLastFlashedBadge() {
+      const badge = document.getElementById('otaLastFlashedBadge');
+      const text  = document.getElementById('otaLastFlashedText');
+      if (!badge || !text) return;
+      const stored = localStorage.getItem('migo_ota_last_flash');
+      if (!stored) { badge.classList.add('hidden'); return; }
+      try {
+        const { crc, sizeKb, date } = JSON.parse(stored);
+        text.textContent = `Last flashed: ${sizeKb} KB · CRC32: ${crc} · ${date}`;
+        badge.classList.remove('hidden');
+      } catch (e) { badge.classList.add('hidden'); }
+    }
+
+    // Core flash routine — separated so it can be called from both
+    // the normal flow and the "Flash Anyway" confirmation button
+    async function _executeOtaFlash(bytes, activeMigo) {
+      const container   = document.getElementById('otaProgressContainer');
+      const statusText  = document.getElementById('otaStatusText');
+      const percentText = document.getElementById('otaProgressPercent');
+      const progressBar = document.getElementById('otaProgressBar');
+      const completeMsg = document.getElementById('otaCompleteMsg');
+      const btn         = document.getElementById('startOtaBtn');
+
+      document.getElementById('otaSameFirmwareWarning')?.classList.add('hidden');
+      container.classList.remove('hidden');
+      if (completeMsg) completeMsg.classList.add('hidden');
+      btn.disabled = true;
+      btn.classList.add('opacity-50', 'cursor-not-allowed');
+
+      try {
+        statusText.innerText = 'Connecting to MIGO OTA Service…';
+        const otaService = await activeMigo.server.getPrimaryService(otaServiceUuid);
+        const otaChar    = await otaService.getCharacteristic(otaCharUuid);
+
+        const totalBytes = bytes.length;
+        statusText.innerText = `Starting OTA update (${Math.round(totalBytes / 1024)} KB)…`;
+
+        // 1. Send START header
+        await otaChar.writeValue(new TextEncoder().encode(`START:${totalBytes}`));
+        await new Promise(r => setTimeout(r, 100));
+
+        // 2. Stream 512-byte chunks
+        const chunkSize = 512;
+        for (let i = 0; i < totalBytes; i += chunkSize) {
+          const chunk = bytes.subarray(i, i + chunkSize);
+          await otaChar.writeValue(chunk);
+          const progress = Math.min(100, Math.round(((i + chunk.length) / totalBytes) * 100));
+          percentText.innerText    = `${progress}%`;
+          progressBar.style.width  = `${progress}%`;
+          statusText.innerText     = `Flashing: ${Math.round((i + chunk.length) / 1024)} / ${Math.round(totalBytes / 1024)} KB`;
+        }
+
+        // 3. Success — store fingerprint in localStorage
+        const crc    = computeCRC32(bytes);
+        const sizeKb = Math.round(totalBytes / 1024);
+        const date   = new Date().toLocaleString();
+        localStorage.setItem('migo_ota_last_flash', JSON.stringify({ crc, sizeKb, date }));
+
+        statusText.innerText    = 'OTA Complete! MIGO is restarting…';
+        percentText.innerText   = '100%';
+        progressBar.style.width = '100%';
+        if (completeMsg) completeMsg.classList.remove('hidden');
+        refreshOtaLastFlashedBadge();
+
+      } catch (err) {
+        console.error('OTA Flash Failed:', err);
+        statusText.innerText = `❌ OTA Failed: ${err.message}`;
+        throw err;
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+      }
+    }
+
+    async function startOtaUpdateFromGoogleDrive(forceFlash = false) {
+      const input   = document.getElementById('otaDriveLinkInput');
+      const warning = document.getElementById('otaSameFirmwareWarning');
+      const detail  = document.getElementById('otaSameWarningDetail');
+      const btn     = document.getElementById('startOtaBtn');
+
+      if (!input) return;
+      const rawInput = input.value.trim();
+      if (!rawInput) {
+        const fb = document.getElementById('otaLastFlashedBadge');
+        if (fb) { fb.classList.remove('hidden'); document.getElementById('otaLastFlashedText').textContent = '⚠️ Please paste a Google Drive link or File ID first.'; setTimeout(() => refreshOtaLastFlashedBadge(), 3000); }
+        return;
+      }
+
+      // Hide any previous same-firmware warning
+      if (warning) warning.classList.add('hidden');
+
+      let fileId = rawInput;
+      const fileIdMatch = rawInput.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || rawInput.match(/id=([a-zA-Z0-9_-]+)/);
+      if (fileIdMatch?.[1]) fileId = fileIdMatch[1];
+
+      if (!connectedMigos || connectedMigos.length === 0) {
+        if (detail) detail.textContent = '⚠️ No MIGO robot connected! Please connect over BLE first.';
+        if (warning) { warning.classList.remove('hidden'); setTimeout(() => warning.classList.add('hidden'), 4000); }
+        return;
+      }
+
+      const activeMigo = connectedMigos.find(m => m.active) || connectedMigos[0];
+      if (!activeMigo?.server) {
+        if (detail) detail.textContent = '⚠️ Bluetooth connection error. Please reconnect to MIGO.';
+        if (warning) { warning.classList.remove('hidden'); setTimeout(() => warning.classList.add('hidden'), 4000); }
+        return;
+      }
+
+      try {
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+
+        const container   = document.getElementById('otaProgressContainer');
+        const statusText  = document.getElementById('otaStatusText');
+        const percentText = document.getElementById('otaProgressPercent');
+        const progressBar = document.getElementById('otaProgressBar');
+        container.classList.remove('hidden');
+        statusText.innerText   = 'Downloading firmware…';
+        percentText.innerText  = '0%';
+        progressBar.style.width = '0%';
+        document.getElementById('otaCorsErrorPanel')?.classList.add('hidden');
+
+        // ── Try multiple Drive URL strategies (CORS cascade) ──
+        // Strategy 1: drive.usercontent.google.com (newer, handles virus scan, better CORS)
+        // Strategy 2: legacy uc?export=download (classic, may CORS-block)
+        const urlStrategies = [
+          `https://drive.usercontent.google.com/download?id=${fileId}&export=download&authuser=0&confirm=t`,
+          `https://drive.google.com/uc?export=download&confirm=t&id=${fileId}`,
+        ];
+
+        let response = null;
+        let lastErr  = null;
+        for (const url of urlStrategies) {
+          try {
+            statusText.innerText = `Trying download URL…`;
+            const r = await fetch(url);
+            if (r.ok) { response = r; break; }
+            lastErr = new Error(`HTTP ${r.status} from ${new URL(url).hostname}`);
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+
+        if (!response) {
+          // Both URLs failed — almost certainly a CORS block
+          const isCors = lastErr?.message?.toLowerCase().includes('fetch') ||
+                         lastErr?.name === 'TypeError';
+          container.classList.add('hidden');
+          const corsPanel = document.getElementById('otaCorsErrorPanel');
+          if (corsPanel) corsPanel.classList.remove('hidden');
+          throw new Error(isCors
+            ? 'CORS: Browser blocked the download from Google Drive. See the help panel below.'
+            : (lastErr?.message || 'Download failed from all URL strategies.'));
+        }
+
+        const buffer = await response.arrayBuffer();
+        const bytes  = new Uint8Array(buffer);
+
+        // Detect if Google returned an HTML page (e.g. virus-scan confirmation) instead of binary
+        const headerSniff = bytes.length > 15
+          ? String.fromCharCode(...bytes.subarray(0, 15)).toLowerCase()
+          : '';
+        if (headerSniff.includes('<!doc') || headerSniff.includes('<html')) {
+          container.classList.add('hidden');
+          const corsPanel = document.getElementById('otaCorsErrorPanel');
+          if (corsPanel) corsPanel.classList.remove('hidden');
+          throw new Error('Google Drive returned an HTML page instead of the .bin file — the file may need manual download due to virus scanning, or sharing is not set to “Anyone with the link”.');
+        }
+
+        if (bytes.length < 1000) throw new Error('Downloaded file too small or invalid. Check Google Drive sharing is set to “Anyone with the link can view”.');
+
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+
+        // ── Hash check ──
+        if (!forceFlash) {
+          const newCRC  = computeCRC32(bytes);
+          const sizeKb  = Math.round(bytes.length / 1024);
+          const stored  = localStorage.getItem('migo_ota_last_flash');
+          if (stored) {
+            try {
+              const last = JSON.parse(stored);
+              if (last.crc === newCRC) {
+                // Same firmware — show in-page warning instead of flashing
+                container.classList.add('hidden');
+                if (detail) detail.textContent =
+                  `This file (${sizeKb} KB, CRC32: ${newCRC}) is identical to the firmware you last flashed on ${last.date}. Re-flashing won’t change anything on MIGO.`;
+                if (warning) {
+                  warning.classList.remove('hidden');
+                  // Wire "Flash Anyway" button to proceed with force flag
+                  const forceBtn = document.getElementById('otaForceFlashBtn');
+                  if (forceBtn) {
+                    forceBtn.onclick = null;
+                    forceBtn.onclick = () => _executeOtaFlash(bytes, activeMigo);
+                  }
+                }
+                return;
+              }
+            } catch (e) { /* corrupt stored data — ignore and flash normally */ }
+          }
+        }
+
+        // Different (or first-time) firmware — flash immediately
+        await _executeOtaFlash(bytes, activeMigo);
+
+      } catch (err) {
+        console.error('OTA Update Failed:', err);
+        const statusText = document.getElementById('otaStatusText');
+        if (statusText) statusText.innerText = `❌ ${err.message}`;
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+      }
+    }
+
+    // Initialise last-flashed badge whenever the settings modal opens
+    const _origOpenSettings = typeof openSettingsModal === 'function' ? openSettingsModal : null;
 
     function updateMaxSpeed(val, silent = false) {
       v5MaxSpeed = parseInt(val);
@@ -8312,7 +8717,36 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       return c;
     }
 
-    // Re-bind D-pad buttons to use inversion
+    // ═══════════════════════════════════════════════════════════════
+    // COLLISION GUARD — blocks forward drive when obstacle is near
+    // ═══════════════════════════════════════════════════════════════
+    // Returns true if a forward command should be suppressed right now.
+    // "Forward" applies to both D-pad 'F' and positive joystick values.
+    function isForwardObstacleBlocked() {
+      return aionaLastKnownDist < v5ObstacleThresh && aionaLastKnownDist < 990;
+    }
+
+    let _obstacleBlockCooldown = false;
+    function showObstacleBlockFeedback() {
+      if (_obstacleBlockCooldown) return;
+      _obstacleBlockCooldown = true;
+      setTimeout(() => { _obstacleBlockCooldown = false; }, 800);
+
+      // Brief haptic on mobile
+      if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
+
+      // Flash a quick toast near the D-pad / joystick area
+      const existing = document.getElementById('dpadObstacleToast');
+      if (existing) existing.remove();
+      const toast = document.createElement('div');
+      toast.id = 'dpadObstacleToast';
+      toast.className = 'fixed bottom-32 left-1/2 -translate-x-1/2 z-[400] flex items-center gap-1.5 px-3 py-1.5 bg-red-900/90 backdrop-blur-sm border border-red-500/60 text-red-200 text-[10px] font-bold rounded-xl shadow-xl pointer-events-none animate-fade-in';
+      toast.innerHTML = `<i class="ph-bold ph-warning text-red-400 animate-pulse"></i> 🛑 Obstacle too close! MIGO can't go forward!`;
+      document.body.appendChild(toast);
+      setTimeout(() => { toast.style.transition = 'opacity 0.4s'; toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400); }, 1800);
+    }
+
+    // Re-bind D-pad buttons to use inversion + obstacle guard
     ['btn-up', 'btn-down', 'btn-left', 'btn-right'].forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -8320,7 +8754,18 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       const fresh = el.cloneNode(true);
       el.parentNode.replaceChild(fresh, el);
       const rawCmd = DPAD_IDS_CMDS[id];
-      const press = () => sendCmd(`CMD:DIR:${getDpadCmd(rawCmd)}`);
+
+      const press = () => {
+        const mappedCmd = getDpadCmd(rawCmd);
+        // Block forward movement when obstacle is within threshold
+        if (mappedCmd === 'F' && isForwardObstacleBlocked()) {
+          sendCmd('CMD:DIR:S'); // enforce stop
+          showObstacleBlockFeedback();
+          return;
+        }
+        sendCmd(`CMD:DIR:${mappedCmd}`);
+      };
+
       const release = () => { if (rawCmd !== 'S') sendCmd('CMD:DIR:S'); };
       fresh.addEventListener('mousedown', press);
       fresh.addEventListener('mouseup', release);
@@ -8330,9 +8775,9 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     });
 
     // ═══════════════════════════════════════════════════════════════
-    // V5 JOYSTICK — Apply max speed + X-axis inversion
+    // V5 JOYSTICK — Apply max speed + X-axis inversion + obstacle guard
     // ═══════════════════════════════════════════════════════════════
-    // Wrap the joystick interval to apply speed cap and X-inversion
+    // Wrap the joystick interval to apply speed cap, X-inversion, and forward block
     const _origJoyInterval = joyInterval;
     clearInterval(_origJoyInterval);
     joyInterval = setInterval(() => {
@@ -8344,6 +8789,15 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         const scale = v5MaxSpeed / 255;
         l = Math.round(l * scale);
         r = Math.round(r * scale);
+
+        // Block forward joystick when obstacle is within threshold.
+        // Both motors positive = moving forward; clamp to 0 to stop forward thrust.
+        if (isForwardObstacleBlocked() && l > 0 && r > 0) {
+          showObstacleBlockFeedback();
+          sendCmd('CMD:DIR:S'); // hard stop
+          return;
+        }
+
         sendCmd(`CMD:JOY:${l}:${r}:`);
       }
     }, 50);
@@ -9460,7 +9914,7 @@ Now give your response as ${migoName}. Jump straight into the discussion — no 
             },
             (err) => {
               console.error('[ConvMode] Gemini error:', err);
-              streamError = true;
+              streamError = err;
               resolve();
             }
           );
@@ -9472,7 +9926,7 @@ Now give your response as ${migoName}. Jump straight into the discussion — no 
         if (streamBubble.parentNode) streamBubble.remove();
 
         if (streamError) {
-          appendConvModeError(`${migoName} lost connection. Conversation paused.`);
+          appendConvModeError(friendlyErrorMessage(streamError));
           stopConvMode();
           break;
         }
