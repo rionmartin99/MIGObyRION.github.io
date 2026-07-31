@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.1.25
+  MIGO Web Controller | Version: 8.2.0
   Change Log:
+  [Jul 31, 2026 11:55 PM] New Feature: Added variable pin I/O blocks (setup_pin_var, digital_write_var, analog_write_var, read_digital_var, read_analog_var) allowing digital and analog read/write operations using declared variables.
   [Jul 31, 2026 11:38 PM] Fix: Implemented central Obstacle Guard enforcement inside sendCmd() gateway — completely blocks all forward commands (including rapid button mashing) when an obstacle is within threshold.
   [Jul 31, 2026 11:33 PM] Fix: Suppressed held forward input during 5cm Emergency Avoidance Turn — sendCmd() rejects forward commands while turning so MIGO completes a full turn away from walls without stuttering.
   [Jul 31, 2026 11:28 PM] Fix: Harmonized Obstacle Guard threshold and 5cm danger zone — sendCmd() tracks forward drive state globally, ensuring threshold stopping (v5ObstacleThresh) and 5cm emergency turns work seamlessly without conflict.
   [Jul 31, 2026 11:23 PM] Fix: Fixed Obstacle Guard threshold precedence — user distance setting (v5ObstacleThresh) now loads on startup and triggers early stop before 5cm emergency turn.
-  [Jul 31, 2026 11:20 PM] New Feature: Added 5cm Emergency Avoidance Turn — automatically executes a quick random Left/Right turn when an obstacle is within 5cm to prevent collisions.
 -->
 
 <!DOCTYPE html>
@@ -939,10 +939,12 @@
                   (returns 0 or 1).</li>
                 <li><b>Read Digital on Pin [Pin] (read_digital_custom):</b> Low-level digital read from any custom GPIO
                   pin (0-39) on the ESP32.</li>
+                <li><b>Read Digital on Pin [Variable] (read_digital_var):</b> Read digital value using a declared variable for the pin.</li>
                 <li><b>Read Analog Value on [Plug] (read_analog):</b> Low-level raw analog read from Plug A, B, or C
                   (returns 0 to 4095).</li>
                 <li><b>Read Analog on Pin [Pin] (read_analog_custom):</b> Low-level raw analog read from any custom ADC
                   pin (0-39) on the ESP32.</li>
+                <li><b>Read Analog on Pin [Variable] (read_analog_var):</b> Read analog value using a declared variable for the pin.</li>
               </ul>
             </div>
 
@@ -955,14 +957,17 @@
                   Output (write).</li>
                 <li><b>Set Custom Pin [Pin] to [Mode] (setup_pin_custom):</b> Configures a custom GPIO pin (0-39) as
                   Input or Output mode.</li>
+                <li><b>Set Pin [Variable] to [Mode] (setup_pin_var):</b> Configures pin mode using a declared variable for the pin.</li>
                 <li><b>Write Digital [ON/OFF] to [Plug] (digital_write):</b> Outputs High (ON) or Low (OFF) voltage to
                   Plug D or C.</li>
                 <li><b>Write Digital [ON/OFF] to Pin [Pin] (digital_write_custom):</b> Outputs High or Low voltage to a
                   custom GPIO pin (0-39).</li>
+                <li><b>Write Digital [ON/OFF] to Pin [Variable] (digital_write_var):</b> Outputs High or Low voltage using a declared variable for the pin.</li>
                 <li><b>Write Analog [Power] to [Plug] (analog_write):</b> Outputs variable power (PWM 0 to 255) to Plug
                   D or C.</li>
                 <li><b>Write Analog [Power] to Pin [Pin] (analog_write_custom):</b> Outputs variable power (PWM 0 to
                   255) to a custom GPIO pin (0-39).</li>
+                <li><b>Write Analog power to Pin [Variable] (analog_write_var):</b> Outputs PWM power using a declared variable for the pin.</li>
                 <li><b>Turn Built-in LED [ON/OFF] (control_led):</b> Controls the blue onboard status LED (GPIO Pin 2).
                   [Inventor Mode]</li>
                 <li><b>Turn Light [ON/OFF] (control_led_explorer):</b> Controls the built-in status light. [Explorer
@@ -3889,6 +3894,12 @@
       { "type": "read_digital_custom", "message0": "Read Digital on Pin %1", "args0": [{ "type": "field_number", "name": "PIN", "value": 0, "min": 0, "max": 39 }], "output": "Boolean", "colour": 100 },
       { "type": "read_analog_custom", "message0": "Read Analog on Pin %1", "args0": [{ "type": "field_number", "name": "PIN", "value": 0, "min": 0, "max": 39 }], "output": "Number", "colour": 100 },
 
+      { "type": "setup_pin_var", "message0": "Set Pin %1 to %2", "args0": [{ "type": "input_value", "name": "PIN" }, { "type": "field_dropdown", "name": "MODE", "options": [["Input (Read)", "IN"], ["Output (Write)", "OUT"]] }], "previousStatement": null, "nextStatement": null, "colour": 260 },
+      { "type": "digital_write_var", "message0": "Write Digital %2 to Pin %1", "args0": [{ "type": "input_value", "name": "PIN" }, { "type": "field_dropdown", "name": "VAL", "options": [["ON (High)", "1"], ["OFF (Low)", "0"]] }], "previousStatement": null, "nextStatement": null, "colour": 260 },
+      { "type": "analog_write_var", "message0": "Write Analog power to Pin %1: %2", "args0": [{ "type": "input_value", "name": "PIN" }, { "type": "input_value", "name": "VAL", "check": "Number" }], "previousStatement": null, "nextStatement": null, "colour": 260 },
+      { "type": "read_digital_var", "message0": "Read Digital on Pin %1", "args0": [{ "type": "input_value", "name": "PIN" }], "output": "Boolean", "colour": 100 },
+      { "type": "read_analog_var", "message0": "Read Analog on Pin %1", "args0": [{ "type": "input_value", "name": "PIN" }], "output": "Number", "colour": 100 },
+
       { "type": "def_func", "message0": "Define function %1 %2 %3", "args0": [{ "type": "field_input", "name": "NAME", "text": "myFunction" }, { "type": "input_dummy" }, { "type": "input_statement", "name": "DO" }], "colour": 290 },
       { "type": "call_func", "message0": "Call function %1", "args0": [{ "type": "field_input", "name": "NAME", "text": "myFunction" }], "previousStatement": null, "nextStatement": null, "colour": 290 },
       { "type": "control_led", "message0": "Turn Built-in LED %1", "args0": [{ "type": "field_dropdown", "name": "STATE", "options": [["ON", "on"], ["OFF", "off"]] }], "previousStatement": null, "nextStatement": null, "colour": 160 },
@@ -3971,8 +3982,8 @@
       events: `<label text="✦ EVENTS" web-class="label-events"></label><block type="event_setup"></block><block type="event_loop"></block>`,
       logic: `<label text="✦ LOGIC &amp; MATH" web-class="label-logic"></label><block type="controls_if"></block><block type="logic_compare"></block><block type="logic_operation"></block><block type="math_number"></block><block type="math_arithmetic"></block><block type="text"></block><block type="control_repeat"></block><block type="control_repeat_until"></block><block type="variable_set"></block><block type="variable_get"></block>`,
       movement: `<label text="✦ MOVEMENT &amp; SOUND" web-class="label-movement"></label><block type="move_robot"></block><block type="stop_robot"></block><block type="wait_time"></block><block type="buzzer_tone"><value name="FREQ"><block type="math_number"><field name="NUM">1000</field></block></value></block><block type="servo_motor"><value name="ANGLE"><block type="math_number"><field name="NUM">50</field></block></value></block>`,
-      sensors: `<label text="✦ SENSORS" web-class="label-sensors"></label><block type="sensor_ultrasonic"></block><block type="sensor_ir"></block><block type="sensor_button"></block><block type="sensor_knob"></block><block type="sensor_ldr"></block><block type="read_digital"></block><block type="read_digital_custom"></block><block type="read_analog"></block><block type="read_analog_custom"></block>`,
-      hardware: `<label text="✦ HARDWARE" web-class="label-hardware"></label><block type="setup_pin"></block><block type="setup_pin_custom"></block><block type="digital_write"></block><block type="digital_write_custom"></block><block type="analog_write"></block><block type="analog_write_custom"></block><block type="control_led"></block><block type="oled_init"></block><block type="oled_clear"></block><block type="oled_print"><value name="VAL"><block type="text"><field name="TEXT">Hello MIGO</field></block></value></block><block type="oled_show"></block>`,
+      sensors: `<label text="✦ SENSORS" web-class="label-sensors"></label><block type="sensor_ultrasonic"></block><block type="sensor_ir"></block><block type="sensor_button"></block><block type="sensor_knob"></block><block type="sensor_ldr"></block><block type="read_digital"></block><block type="read_digital_custom"></block><block type="read_digital_var"><value name="PIN"><block type="variable_get"><field name="NAME">pin</field></block></value></block><block type="read_analog"></block><block type="read_analog_custom"></block><block type="read_analog_var"><value name="PIN"><block type="variable_get"><field name="NAME">pin</field></block></value></block>`,
+      hardware: `<label text="✦ HARDWARE" web-class="label-hardware"></label><block type="setup_pin"></block><block type="setup_pin_custom"></block><block type="setup_pin_var"><value name="PIN"><block type="variable_get"><field name="NAME">pin</field></block></value></block><block type="digital_write"></block><block type="digital_write_custom"></block><block type="digital_write_var"><value name="PIN"><block type="variable_get"><field name="NAME">pin</field></block></value></block><block type="analog_write"></block><block type="analog_write_custom"></block><block type="analog_write_var"><value name="PIN"><block type="variable_get"><field name="NAME">pin</field></block></value><value name="VAL"><block type="math_number"><field name="NUM">255</field></block></value></block><block type="control_led"></block><block type="oled_init"></block><block type="oled_clear"></block><block type="oled_print"><value name="VAL"><block type="text"><field name="TEXT">Hello MIGO</field></block></value></block><block type="oled_show"></block>`,
       functions: `<label text="✦ FUNCTIONS" web-class="label-functions"></label><block type="def_func"></block><block type="call_func"></block><block type="print_serial"></block>`
     };
 
@@ -4056,7 +4067,9 @@
         return { c: "OP", op: "/", l: { c: "OP", op: "*", l: { c: "AR", p: Number(block.getFieldValue("PIN")) }, r: { c: "VAL", v: 100 } }, r: { c: "VAL", v: 4095 } };
       }
       if (block.type === 'read_digital' || block.type === 'read_digital_custom') return { c: "DR", p: Number(block.getFieldValue("PIN")) };
+      if (block.type === 'read_digital_var') return { c: "DR", p: parseValue(block.getInputTargetBlock("PIN")) };
       if (block.type === 'read_analog' || block.type === 'read_analog_custom') return { c: "AR", p: Number(block.getFieldValue("PIN")) };
+      if (block.type === 'read_analog_var') return { c: "AR", p: parseValue(block.getInputTargetBlock("PIN")) };
 
       // v3 variables and arithmetic
       if (block.type === 'variable_get') return { c: "V_GET", n: block.getFieldValue("NAME") };
@@ -4117,8 +4130,11 @@
           arr.push(buildIfNode(0));
         }
         else if (current.type === 'setup_pin' || current.type === 'setup_pin_custom') arr.push({ c: "PM", p: Number(current.getFieldValue("PIN")), m: current.getFieldValue("MODE") });
+        else if (current.type === 'setup_pin_var') arr.push({ c: "PM", p: parseValue(current.getInputTargetBlock("PIN")), m: current.getFieldValue("MODE") });
         else if (current.type === 'digital_write' || current.type === 'digital_write_custom') arr.push({ c: "DW", p: Number(current.getFieldValue("PIN")), v: { c: "VAL", v: Number(current.getFieldValue("VAL")) } });
+        else if (current.type === 'digital_write_var') arr.push({ c: "DW", p: parseValue(current.getInputTargetBlock("PIN")), v: { c: "VAL", v: Number(current.getFieldValue("VAL")) } });
         else if (current.type === 'analog_write' || current.type === 'analog_write_custom') arr.push({ c: "AW", p: Number(current.getFieldValue("PIN")), v: parseValue(current.getInputTargetBlock("VAL")) });
+        else if (current.type === 'analog_write_var') arr.push({ c: "AW", p: parseValue(current.getInputTargetBlock("PIN")), v: parseValue(current.getInputTargetBlock("VAL")) });
         else if (current.type === 'call_func') arr.push({ c: "C", f: current.getFieldValue("NAME") });
         else if (current.type === 'control_led' || current.type === 'control_led_explorer') arr.push({ c: "L", state: current.getFieldValue("STATE") });
         else if (current.type === 'print_serial' || current.type === 'print_serial_explorer') arr.push({ c: "P", v: parseValue(current.getInputTargetBlock("VAL")) });
@@ -4322,7 +4338,9 @@
         if (block.type === 'sensor_knob') return `read_knob(${block.getFieldValue("PIN")})`;
         if (block.type === 'sensor_ldr') return `read_light_level(${block.getFieldValue("PIN")})`;
         if (block.type === 'read_digital' || block.type === 'read_digital_custom') return `digitalRead(${block.getFieldValue("PIN")})`;
+        if (block.type === 'read_digital_var') return `digitalRead(${getValCpp(block.getInputTargetBlock("PIN"))})`;
         if (block.type === 'read_analog' || block.type === 'read_analog_custom') return `analogRead(${block.getFieldValue("PIN")})`;
+        if (block.type === 'read_analog_var') return `analogRead(${getValCpp(block.getInputTargetBlock("PIN"))})`;
         if (block.type === 'variable_get') return sanitizeVarName(block.getFieldValue("NAME"));
         if (block.type === 'math_arithmetic') {
           let op = block.getFieldValue("OP");
@@ -4384,10 +4402,16 @@
             blockCode += `${indent}}\n`;
           } else if (current.type === 'setup_pin' || current.type === 'setup_pin_custom') {
             blockCode += `${indent}pinMode(${current.getFieldValue("PIN")}, ${current.getFieldValue("MODE") === "IN" ? "INPUT" : "OUTPUT"});\n`;
+          } else if (current.type === 'setup_pin_var') {
+            blockCode += `${indent}pinMode(${getValCpp(current.getInputTargetBlock("PIN"))}, ${current.getFieldValue("MODE") === "IN" ? "INPUT" : "OUTPUT"});\n`;
           } else if (current.type === 'digital_write' || current.type === 'digital_write_custom') {
             blockCode += `${indent}digitalWrite(${current.getFieldValue("PIN")}, ${current.getFieldValue("VAL") === "1" ? "HIGH" : "LOW"});\n`;
+          } else if (current.type === 'digital_write_var') {
+            blockCode += `${indent}digitalWrite(${getValCpp(current.getInputTargetBlock("PIN"))}, ${current.getFieldValue("VAL") === "1" ? "HIGH" : "LOW"});\n`;
           } else if (current.type === 'analog_write' || current.type === 'analog_write_custom') {
             blockCode += `${indent}analogWrite(${current.getFieldValue("PIN")}, ${getValCpp(current.getInputTargetBlock("VAL"))});\n`;
+          } else if (current.type === 'analog_write_var') {
+            blockCode += `${indent}analogWrite(${getValCpp(current.getInputTargetBlock("PIN"))}, ${getValCpp(current.getInputTargetBlock("VAL"))});\n`;
           } else if (current.type === 'call_func') {
             blockCode += `${indent}${sanitizeFuncName(current.getFieldValue("NAME"))}();\n`;
           } else if (current.type === 'control_led' || current.type === 'control_led_explorer') {
