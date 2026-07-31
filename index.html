@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.1.8
+  MIGO Web Controller | Version: 8.1.9
   Change Log:
+  [Jul 31, 2026 08:10 AM] Fix: Implemented sentence-chunking speech queue for AIONA TTS to prevent mid-sentence cut-off on long responses and stories.
   [Jul 30, 2026 11:20 PM] Fix: Clarified OTA firmware link label and description to support GitHub raw links alongside Google Drive.
   [Jul 30, 2026 11:18 PM] Fix: Repositioned MIGO BLE Robot Name and Global OTA Firmware Update settings after Block Code Inversion in Settings modal.
   [Jul 30, 2026 11:15 PM] Fix: Limited MIGO BLE custom robot name input to 10 characters in Settings and Start screen to prevent BLE name overflow.
   [Jul 30, 2026 10:15 PM] Fix: OTA "Failed to fetch" CORS error — multi-URL cascade with drive.usercontent.google.com; HTML detection for virus-scan page; CORS error help panel.
-  [Jul 30, 2026 10:10 PM] New Feature: OTA firmware version detection via CRC32 hash caching — warns before re-flashing identical firmware, shows last-flashed metadata.
 -->
 
 <!DOCTYPE html>
@@ -7321,148 +7321,101 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
       // Speech synthesis trigger (dialogue plays first)
       if (ttsEnabled && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
         const phoneticText = text.replace(/\bmigo\b/gi, "mee-go").replace(/\baiona\b/gi, "eye-oh-nuh");
-        const utterance = new SpeechSynthesisUtterance(phoneticText);
-        window.activeAionaUtterance = utterance; // Prevent Chrome SpeechSynthesis GC bug
-        const voices = window.speechSynthesis.getVoices();
-        const englishVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
-        if (englishVoice) utterance.voice = englishVoice;
-        utterance.rate = 1.02; utterance.pitch = 1.25;
 
+        // Split text into sentence chunks to prevent Web Speech API 15s utterance timeout
+        const rawChunks = phoneticText.match(/[^.!?;\n]+[.!?;\n]+|[^.!?;\n]+$/g) || [phoneticText];
+        const chunks = rawChunks.map(c => c.trim()).filter(c => c.length > 0);
+
+        window.activeAionaUtteranceQueue = [];
+        let chunkIndex = 0;
+        let speechStarted = false;
         aionaSpeechRunning = true;
 
-        // Chrome/Mobile SpeechSynthesis keep-alive — prevents TTS from silently pausing mid-sentence on mobile
-        const aionaSpeechKeepAlive = setInterval(() => {
-          if (window.speechSynthesis.speaking) {
-            window.speechSynthesis.pause();
-            window.speechSynthesis.resume();
-          }
-        }, 5000);
+        if (commands && commands.length > 0) {
+          executeAionaCommandSequence(commands);
+        }
 
-        let boundaryFired = false;
-        let speechStarted = false;
-
-        // Synchronize physical actions & face animation to utterance.onstart
-        // so voice audio and robot gestures begin at the exact same instant!
-        utterance.onstart = () => {
-          speechStarted = true;
-          if (aionaTalkPulseInterval) clearInterval(aionaTalkPulseInterval);
-          sendCmd('CMD:FACE:TALK'); // Send immediately as voice starts
-          aionaTalkPulseInterval = setInterval(() => {
-            if (aionaSpeechRunning) sendCmd('CMD:FACE:TALK');
-          }, 850);
-
-          // Start explicit sequence commands concurrently with actual audio start
-          if (commands && commands.length > 0) {
-            executeAionaCommandSequence(commands);
-          }
-        };
-
-        utterance.onboundary = (event) => {
-          if (event.name === 'word') {
-            boundaryFired = true;
-            if (!aionaSequenceRunning) {
-              const charIndex = event.charIndex;
-              const remainingText = phoneticText.slice(charIndex);
-              const wordMatch = remainingText.match(/^([a-zA-Z0-9']+)/);
-              if (wordMatch) {
-                const word = wordMatch[1];
-                const textAfterWord = remainingText.slice(word.length);
-                const puncMatch = textAfterWord.match(/^([.,!?])/);
-                const punctuation = puncMatch ? puncMatch[1] : '';
-                triggerWordGesture(word, punctuation);
-              }
-            }
-          }
-        };
-
-        // Watchdog fallback for mobile or voices/browsers that do not fire onboundary events
-        setTimeout(() => {
-          if (!boundaryFired && aionaSpeechRunning) {
-            console.log("[Aiona Speech] Native boundary events not supported by this voice/browser. Falling back to timer-based gestures.");
-            const wordsWithMetadata = [];
-            const wordRegex = /\b[a-zA-Z0-9']+\b[.,!?]?/g;
-            let match;
-            while ((match = wordRegex.exec(phoneticText)) !== null) {
-              const matchedText = match[0];
-              const word = matchedText.replace(/[.,!?]/g, '');
-              const puncMatch = matchedText.match(/[.,!?]$/);
-              const punctuation = puncMatch ? puncMatch[0] : '';
-              wordsWithMetadata.push({ word, punctuation });
+        function speakNextChunk() {
+          if (chunkIndex >= chunks.length || !aionaSpeechRunning) {
+            aionaSpeechRunning = false;
+            window.activeAionaUtteranceQueue = [];
+            if (aionaTalkPulseInterval) {
+              clearInterval(aionaTalkPulseInterval);
+              aionaTalkPulseInterval = null;
             }
 
-            let delayOffset = 0;
-            wordsWithMetadata.forEach((w) => {
-              setTimeout(() => {
-                if (aionaSpeechRunning && !boundaryFired && !aionaSequenceRunning) {
-                  triggerWordGesture(w.word, w.punctuation);
+            if (!aionaSequenceRunning && !aionaReactionRunning && aionaState === 'speaking') {
+              if (commands && commands.length > 0) {
+                sendCmd('CMD:FACE:IDLE');
+                smoothLowerArm();
+                if (aionaContinuousActive) {
+                  aionaTriggerManualSpeech();
+                } else {
+                  setAionaState('idle');
+                  if (aionaWakeWordActive) startAionaWakeWordScanner();
                 }
-              }, delayOffset);
-              delayOffset += 350;
-            });
-          }
-        }, 350);
-
-        utterance.onend = () => {
-          clearInterval(aionaSpeechKeepAlive);
-          aionaSpeechRunning = false;
-          window.activeAionaUtterance = null;
-          if (aionaTalkPulseInterval) {
-            clearInterval(aionaTalkPulseInterval);
-            aionaTalkPulseInterval = null;
-          }
-
-          if (!aionaSequenceRunning && !aionaReactionRunning && aionaState === 'speaking') {
-            if (commands && commands.length > 0) {
-              sendCmd('CMD:FACE:IDLE');
-              smoothLowerArm();
-              if (aionaContinuousActive) {
-                aionaTriggerManualSpeech();
               } else {
-                setAionaState('idle');
-                if (aionaWakeWordActive) startAionaWakeWordScanner();
+                sendCmd('CMD:FACE:IDLE');
+                aionaDoEmotionPhysicalReactions(emotion, userInput);
               }
-            } else {
-              sendCmd('CMD:FACE:IDLE');
-              aionaDoEmotionPhysicalReactions(emotion, userInput);
             }
-          }
-        };
-
-        utterance.onerror = () => {
-          clearInterval(aionaSpeechKeepAlive);
-          aionaSpeechRunning = false;
-          window.activeAionaUtterance = null;
-          if (aionaTalkPulseInterval) {
-            clearInterval(aionaTalkPulseInterval);
-            aionaTalkPulseInterval = null;
+            return;
           }
 
-          if (!aionaSequenceRunning && !aionaReactionRunning && aionaState === 'speaking') {
-            if (commands && commands.length > 0) {
-              sendCmd('CMD:FACE:IDLE');
-              smoothLowerArm();
-              if (aionaContinuousActive) {
-                aionaTriggerManualSpeech();
-              } else {
-                setAionaState('idle');
-                if (aionaWakeWordActive) startAionaWakeWordScanner();
+          const chunkText = chunks[chunkIndex];
+          const utterance = new SpeechSynthesisUtterance(chunkText);
+          window.activeAionaUtteranceQueue.push(utterance); // Prevent GC
+
+          const voices = window.speechSynthesis.getVoices();
+          const englishVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
+          if (englishVoice) utterance.voice = englishVoice;
+          utterance.rate = 1.02;
+          utterance.pitch = 1.25;
+
+          utterance.onstart = () => {
+            if (!speechStarted) {
+              speechStarted = true;
+              if (aionaTalkPulseInterval) clearInterval(aionaTalkPulseInterval);
+              sendCmd('CMD:FACE:TALK');
+              aionaTalkPulseInterval = setInterval(() => {
+                if (aionaSpeechRunning) sendCmd('CMD:FACE:TALK');
+              }, 850);
+            }
+          };
+
+          utterance.onboundary = (event) => {
+            if (event.name === 'word') {
+              if (!aionaSequenceRunning) {
+                const charIndex = event.charIndex;
+                const remainingText = chunkText.slice(charIndex);
+                const wordMatch = remainingText.match(/^([a-zA-Z0-9']+)/);
+                if (wordMatch) {
+                  const word = wordMatch[1];
+                  const textAfterWord = remainingText.slice(word.length);
+                  const puncMatch = textAfterWord.match(/^([.,!?])/);
+                  const punctuation = puncMatch ? puncMatch[1] : '';
+                  triggerWordGesture(word, punctuation);
+                }
               }
-            } else {
-              sendCmd('CMD:FACE:IDLE');
-              aionaDoEmotionPhysicalReactions(emotion, userInput);
             }
-          }
-        };
+          };
 
-        // Fallback for browsers where onstart doesn't fire promptly
-        setTimeout(() => {
-          if (aionaSpeechRunning && !speechStarted) {
-            utterance.onstart();
-          }
-        }, 150);
+          utterance.onend = () => {
+            chunkIndex++;
+            speakNextChunk();
+          };
 
-        window.speechSynthesis.speak(utterance);
+          utterance.onerror = () => {
+            chunkIndex++;
+            speakNextChunk();
+          };
+
+          window.speechSynthesis.speak(utterance);
+        }
+
+        speakNextChunk();
       } else {
         // If voice is disabled, run actions immediately, and use a timer to act as the speech-running buffer duration
         aionaSpeechRunning = true;
