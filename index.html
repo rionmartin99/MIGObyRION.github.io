@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.1.9
+  MIGO Web Controller | Version: 8.1.10
   Change Log:
+  [Jul 31, 2026 08:55 AM] Fix: Fixed 12-second TTS hard timeout and added sentence chunking in Multi-MIGO Conversation Mode.
   [Jul 31, 2026 08:10 AM] Fix: Implemented sentence-chunking speech queue for AIONA TTS to prevent mid-sentence cut-off on long responses and stories.
   [Jul 30, 2026 11:20 PM] Fix: Clarified OTA firmware link label and description to support GitHub raw links alongside Google Drive.
   [Jul 30, 2026 11:18 PM] Fix: Repositioned MIGO BLE Robot Name and Global OTA Firmware Update settings after Block Code Inversion in Settings modal.
   [Jul 30, 2026 11:15 PM] Fix: Limited MIGO BLE custom robot name input to 10 characters in Settings and Start screen to prevent BLE name overflow.
-  [Jul 30, 2026 10:15 PM] Fix: OTA "Failed to fetch" CORS error — multi-URL cascade with drive.usercontent.google.com; HTML detection for virus-scan page; CORS error help panel.
 -->
 
 <!DOCTYPE html>
@@ -10019,43 +10019,32 @@ Now give your response as ${migoName}. Jump straight into the discussion — no 
           })();
         }
 
-        // TTS if enabled — optimized event-driven speech execution
+        // TTS if enabled — optimized event-driven sentence-chunked speech execution
         if (ttsEnabled && window.speechSynthesis) {
           const phoneticText = cleanResp
             .replace(/\bmigo\b/gi, 'mee-go')
             .replace(/\baiona\b/gi, 'eye-oh-nuh');
-          const utterance = new SpeechSynthesisUtterance(phoneticText);
-          window['_convUtterance_' + idx] = utterance; // prevent Chrome GC bug
-          const voices = window.speechSynthesis.getVoices();
-          utterance.pitch = 1.0 + (idx * 0.15);
-          utterance.rate = 1.05; // Slightly snappier pace for natural dialogue
-          const englishVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
-          if (englishVoice) utterance.voice = englishVoice;
 
-          // Step 1: Cancel previous speech and yield tick
+          // Split text into sentence chunks to prevent Web Speech API 15s utterance timeout
+          const rawChunks = phoneticText.match(/[^.!?;\n]+[.!?;\n]+|[^.!?;\n]+$/g) || [phoneticText];
+          const chunks = rawChunks.map(c => c.trim()).filter(c => c.length > 0);
+
           if (currentConvTalkPulse) { clearInterval(currentConvTalkPulse); currentConvTalkPulse = null; }
           window.speechSynthesis.cancel();
           await new Promise(r => setTimeout(r, 30));
 
-          // Chrome SpeechSynthesis keep-alive interval (prevents Chrome TTS from pausing mid-speech)
-          const keepAliveInterval = setInterval(() => {
-            if (window.speechSynthesis.speaking) {
-              window.speechSynthesis.pause();
-              window.speechSynthesis.resume();
-            }
-          }, 5000);
-
-          // Step 2: Event-driven Speech Promise — advances immediately as soon as speech finishes
           await new Promise((resolve) => {
             let resolved = false;
             let thisTurnPulse = null;
             let speechStarted = false;
+            let chunkIndex = 0;
+            window['_convUtteranceQueue_' + idx] = [];
 
             const finishTurn = () => {
               if (resolved) return;
               resolved = true;
-              clearInterval(keepAliveInterval);
-              window['_convUtterance_' + idx] = null;
+              clearTimeout(safetyTimeout);
+              window['_convUtteranceQueue_' + idx] = [];
               if (thisTurnPulse) clearInterval(thisTurnPulse);
               if (currentConvTalkPulse === thisTurnPulse) currentConvTalkPulse = null;
               sendFaceCmdToMigo(migo, 'IDLE');
@@ -10063,72 +10052,69 @@ Now give your response as ${migoName}. Jump straight into the discussion — no 
               resolve();
             };
 
-            // Max safety timeout (12 seconds) so script never gets stuck if browser TTS crashes
+            // Dynamic safety timeout per response length (up to 120 seconds for long responses/stories)
+            const maxAllowedTime = Math.max(cleanResp.length * 150, 15000);
             const safetyTimeout = setTimeout(() => {
-              console.warn(`[ConvMode] Speech timeout safety triggered for ${migoName}`);
+              console.warn(`[ConvMode] Speech safety timeout triggered for ${migoName}`);
               window.speechSynthesis.cancel();
               finishTurn();
-            }, Math.min(Math.max(cleanResp.length * 80, 4000), 12000));
+            }, Math.min(maxAllowedTime, 120000));
 
-            // Synchronize face pulse to utterance.onstart so mouth animation matches audio playback start
-            utterance.onstart = () => {
-              if (speechStarted) return;
-              speechStarted = true;
-              sendFaceCmdToMigo(migo, 'TALK');
-              thisTurnPulse = setInterval(() => {
-                if (convModeActive && !convModeAborted && !resolved) sendFaceCmdToMigo(migo, 'TALK');
-              }, 850);
-              currentConvTalkPulse = thisTurnPulse;
-            };
+            function speakNextConvChunk() {
+              if (chunkIndex >= chunks.length || convModeAborted || !convModeActive) {
+                finishTurn();
+                return;
+              }
 
-            let boundaryFired = false;
-            utterance.onboundary = (event) => {
-              if (event.name === 'word' && convModeActive && !convModeAborted) {
-                boundaryFired = true;
-                const remaining = phoneticText.slice(event.charIndex);
-                const wordMatch = remaining.match(/^([a-zA-Z0-9']+)/);
-                if (wordMatch) {
-                  const word = wordMatch[1];
-                  const afterWord = remaining.slice(word.length);
-                  const puncMatch = afterWord.match(/^([.,!?])/);
-                  const punctuation = puncMatch ? puncMatch[1] : '';
-                  triggerWordGestureToMigo(migo, idx, word, punctuation);
+              const chunkText = chunks[chunkIndex];
+              const utterance = new SpeechSynthesisUtterance(chunkText);
+              window['_convUtteranceQueue_' + idx].push(utterance); // Prevent GC
+
+              const voices = window.speechSynthesis.getVoices();
+              utterance.pitch = 1.0 + (idx * 0.15);
+              utterance.rate = 1.05;
+              const englishVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
+              if (englishVoice) utterance.voice = englishVoice;
+
+              utterance.onstart = () => {
+                if (speechStarted) return;
+                speechStarted = true;
+                sendFaceCmdToMigo(migo, 'TALK');
+                thisTurnPulse = setInterval(() => {
+                  if (convModeActive && !convModeAborted && !resolved) sendFaceCmdToMigo(migo, 'TALK');
+                }, 850);
+                currentConvTalkPulse = thisTurnPulse;
+              };
+
+              utterance.onboundary = (event) => {
+                if (event.name === 'word' && convModeActive && !convModeAborted) {
+                  const remaining = chunkText.slice(event.charIndex);
+                  const wordMatch = remaining.match(/^([a-zA-Z0-9']+)/);
+                  if (wordMatch) {
+                    const word = wordMatch[1];
+                    const afterWord = remaining.slice(word.length);
+                    const puncMatch = afterWord.match(/^([.,!?])/);
+                    const punctuation = puncMatch ? puncMatch[1] : '';
+                    triggerWordGestureToMigo(migo, idx, word, punctuation);
+                  }
                 }
-              }
-            };
+              };
 
-            // Fallback word gestures for browsers without boundary events
-            setTimeout(() => {
-              if (!boundaryFired && convModeActive && !convModeAborted && !resolved) {
-                let delayOffset = 0;
-                wordsWithMetadata.forEach((w) => {
-                  setTimeout(() => {
-                    if (convModeActive && !convModeAborted && !resolved) triggerWordGestureToMigo(migo, idx, w.word, w.punctuation);
-                  }, delayOffset);
-                  delayOffset += 400;
-                });
-              }
-            }, 250);
+              utterance.onend = () => {
+                chunkIndex++;
+                speakNextConvChunk();
+              };
 
-            utterance.onend = () => {
-              clearTimeout(safetyTimeout);
-              finishTurn();
-            };
+              utterance.onerror = (e) => {
+                console.warn(`[ConvMode] Speech chunk error on ${migoName}:`, e);
+                chunkIndex++;
+                speakNextConvChunk();
+              };
 
-            utterance.onerror = (e) => {
-              console.warn(`[ConvMode] Speech error on ${migoName}:`, e);
-              clearTimeout(safetyTimeout);
-              finishTurn();
-            };
+              window.speechSynthesis.speak(utterance);
+            }
 
-            // Fallback safeguard if browser onstart event is delayed
-            setTimeout(() => {
-              if (convModeActive && !convModeAborted && !speechStarted && !resolved) {
-                utterance.onstart();
-              }
-            }, 150);
-
-            window.speechSynthesis.speak(utterance);
+            speakNextConvChunk();
           });
         } else {
           // No TTS — wait reading delay then trigger emotion physical reaction
