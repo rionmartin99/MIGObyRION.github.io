@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.1.11
+  MIGO Web Controller | Version: 8.1.25
   Change Log:
-  [Jul 31, 2026 10:05 AM] New Feature: Implemented lively speech gesture scheduler and default micro-movements (head tilts, LED blinks, motor wiggles) during speech.
-  [Jul 31, 2026 08:55 AM] Fix: Fixed 12-second TTS hard timeout and added sentence chunking in Multi-MIGO Conversation Mode.
-  [Jul 31, 2026 08:10 AM] Fix: Implemented sentence-chunking speech queue for AIONA TTS to prevent mid-sentence cut-off on long responses and stories.
-  [Jul 30, 2026 11:20 PM] Fix: Clarified OTA firmware link label and description to support GitHub raw links alongside Google Drive.
-  [Jul 30, 2026 11:18 PM] Fix: Repositioned MIGO BLE Robot Name and Global OTA Firmware Update settings after Block Code Inversion in Settings modal.
+  [Jul 31, 2026 11:38 PM] Fix: Implemented central Obstacle Guard enforcement inside sendCmd() gateway — completely blocks all forward commands (including rapid button mashing) when an obstacle is within threshold.
+  [Jul 31, 2026 11:33 PM] Fix: Suppressed held forward input during 5cm Emergency Avoidance Turn — sendCmd() rejects forward commands while turning so MIGO completes a full turn away from walls without stuttering.
+  [Jul 31, 2026 11:28 PM] Fix: Harmonized Obstacle Guard threshold and 5cm danger zone — sendCmd() tracks forward drive state globally, ensuring threshold stopping (v5ObstacleThresh) and 5cm emergency turns work seamlessly without conflict.
+  [Jul 31, 2026 11:23 PM] Fix: Fixed Obstacle Guard threshold precedence — user distance setting (v5ObstacleThresh) now loads on startup and triggers early stop before 5cm emergency turn.
+  [Jul 31, 2026 11:20 PM] New Feature: Added 5cm Emergency Avoidance Turn — automatically executes a quick random Left/Right turn when an obstacle is within 5cm to prevent collisions.
 -->
 
 <!DOCTYPE html>
@@ -352,6 +352,38 @@
       box-shadow: none;
       cursor: not-allowed;
     }
+    /* Obstacle Guard Toggle Switch */
+    .obs-toggle-track {
+      width: 32px;
+      height: 17px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 9999px;
+      border: 1px solid rgba(255,255,255,0.2);
+      transition: background 0.25s, border-color 0.25s;
+      position: relative;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .obs-toggle-track.on {
+      background: linear-gradient(90deg, #14b8a6, #10b981);
+      border-color: #14b8a6;
+      box-shadow: 0 0 8px rgba(20,184,166,0.55);
+    }
+    .obs-toggle-knob {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 11px;
+      height: 11px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.25s cubic-bezier(.4,0,.2,1), box-shadow 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+    }
+    .obs-toggle-track.on .obs-toggle-knob {
+      transform: translateX(15px);
+      box-shadow: 0 0 6px rgba(20,184,166,0.7);
+    }
   </style>
 </head>
 
@@ -439,10 +471,34 @@
     class="hidden absolute inset-0 z-[115] flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm p-4">
     <div
       class="glass-panel bg-slate-900 border-teal-500 border-2 p-6 max-w-lg w-full relative text-teal-50 shadow-2xl rounded-2xl flex flex-col max-h-[92%] overflow-y-auto">
-      <button onclick="closeSettingsModal()"
-        class="absolute top-4 right-4 bg-red-500 hover:bg-red-600 w-8 h-8 rounded-full font-bold flex items-center justify-center active:scale-95 transition-transform z-10">
-        <i class="ph-bold ph-x text-white"></i>
-      </button>
+      <!-- Top Header Action Bar (Connect, Save, Close) -->
+      <div class="absolute top-4 right-4 z-10 flex items-center gap-2">
+        <!-- Saved feedback badge -->
+        <span id="settingsSavedBadge"
+          class="hidden text-[10px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-1 rounded-lg border border-emerald-500/30 animate-pulse">
+          Saved!
+        </span>
+
+        <!-- Bluetooth Connect Button -->
+        <button onclick="connectBLE()" title="Connect to MIGO via Bluetooth"
+          class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold text-xs px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md cursor-pointer">
+          <i class="ph-bold ph-bluetooth text-sm"></i>
+          <span>Connect</span>
+        </button>
+
+        <!-- Save Button -->
+        <button onclick="saveSettingsFromHeader()" title="Save Settings Immediately"
+          class="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs px-2.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-md cursor-pointer">
+          <i class="ph-bold ph-floppy-disk text-sm"></i>
+          <span>Save</span>
+        </button>
+
+        <!-- Close Button -->
+        <button onclick="closeSettingsModal()" title="Close Settings"
+          class="bg-red-500 hover:bg-red-600 w-8 h-8 rounded-full font-bold flex items-center justify-center active:scale-95 transition-transform shrink-0 cursor-pointer">
+          <i class="ph-bold ph-x text-white"></i>
+        </button>
+      </div>
       <h2 class="text-2xl font-bold mb-1 text-teal-300 flex items-center gap-2">
         <i class="ph-bold ph-gear"></i> Settings
       </h2>
@@ -481,6 +537,25 @@
               class="w-full h-2 rounded-full appearance-none cursor-pointer bg-slate-700 accent-red-400">
             <p class="text-[9px] text-white/40 mt-1.5 leading-normal">AIONA will stop movement and alert when an
               obstacle is detected within this range.</p>
+          </div>
+
+          <!-- Obstacle Guard Toggle -->
+          <div class="border-t border-white/5 pt-3 flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold text-white/80 flex items-center gap-1.5">
+                <i class="ph-bold ph-shield-warning text-amber-400 text-xs"></i>
+                Obstacle Guard
+              </p>
+              <p class="text-[9px] text-white/40 mt-0.5 leading-normal">Block forward movement when obstacle is within the stop distance above. Works in all modes.</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0 ml-3">
+              <span id="settingsObstacleGuardLabel" class="text-[8px] text-white/40 font-bold uppercase">Off</span>
+              <button id="settingsObstacleGuardToggle" onclick="toggleObstacleGuard()"
+                class="w-10 h-6 bg-slate-700 rounded-full p-0.5 transition-all relative flex items-center cursor-pointer"
+                title="Toggle obstacle guard">
+                <span id="settingsObstacleGuardKnob" class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -671,17 +746,25 @@
 
             <!-- OTA Progress UI -->
             <div id="otaProgressContainer" class="hidden mt-3 pt-3 border-t border-white/10">
-              <div class="flex justify-between items-center mb-1">
-                <span id="otaStatusText" class="text-[10px] font-semibold text-indigo-300">Preparing OTA update...</span>
-                <span id="otaProgressPercent" class="text-[10px] font-bold text-indigo-400">0%</span>
+              <!-- Active progress row -->
+              <div id="otaProgressActive">
+                <div class="flex justify-between items-center mb-1">
+                  <span id="otaStatusText" class="text-[10px] font-semibold text-indigo-300">Preparing OTA update...</span>
+                  <span id="otaProgressPercent" class="text-[10px] font-bold text-indigo-400">0%</span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-white/10">
+                  <div id="otaProgressBar" class="bg-gradient-to-r from-indigo-500 to-teal-400 h-full w-0 transition-all duration-150"></div>
+                </div>
               </div>
-              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-white/10">
-                <div id="otaProgressBar" class="bg-gradient-to-r from-indigo-500 to-teal-400 h-full w-0 transition-all duration-150"></div>
-              </div>
-              <!-- OTA completion message -->
-              <div id="otaCompleteMsg" class="hidden mt-2 flex items-center gap-1.5 text-[10px] font-bold text-teal-300">
-                <i class="ph-bold ph-check-circle text-sm"></i>
-                <span>Firmware flashed successfully! MIGO is restarting…</span>
+              <!-- OTA success banner (replaces progress bar on completion) -->
+              <div id="otaCompleteMsg" class="hidden">
+                <div class="flex items-center gap-2 p-3 rounded-xl bg-teal-500/20 border border-teal-400/50 mt-1">
+                  <i class="ph-bold ph-check-circle text-teal-300 text-xl shrink-0"></i>
+                  <div>
+                    <p class="text-[11px] font-bold text-teal-200">Firmware Flashed Successfully!</p>
+                    <p class="text-[9px] text-teal-300/70 mt-0.5">MIGO is restarting… You can reconnect in a few seconds.</p>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1400,6 +1483,27 @@
           <input type="range" id="servoSlider" min="0" max="100" value="0" disabled
             class="w-full opacity-50 transition-opacity duration-200" oninput="handleServoSliderInput(this.value)">
         </div>
+
+        <!-- Obstacle Guard Toggle -->
+        <div id="obstacleGuardPanel"
+          class="w-40 landscape:w-48 mt-2 flex flex-col items-start gap-1 select-none bg-black/20 p-2.5 rounded-xl border border-white/10 shadow-inner">
+          <div class="flex justify-between w-full items-center">
+            <span class="text-[9px] font-bold tracking-wider text-white/80 flex items-center gap-1">
+              <i class="ph-bold ph-shield-warning text-[10px] text-amber-400"></i>
+              OBSTACLE GUARD
+            </span>
+            <!-- Toggle switch -->
+            <button id="obstacleGuardToggle" onclick="toggleObstacleGuard()"
+              title="Toggle obstacle guard — stops forward movement when ultrasonic detects an obstacle">
+              <div id="obstacleGuardTrack" class="obs-toggle-track">
+                <div class="obs-toggle-knob"></div>
+              </div>
+            </button>
+          </div>
+          <p id="obstacleGuardStatus" class="text-[8px] text-white/40 leading-tight">
+            OFF &mdash; Guard disabled
+          </p>
+        </div>
       </div>
 
       <!-- Action Buttons -->
@@ -2068,8 +2172,9 @@
     });
 
     // --- V5 Settings State (Declared at top to avoid Temporal Dead Zone ReferenceError) ---
-    let v5MaxSpeed = 200;
-    let v5ObstacleThresh = 15;
+    let v5MaxSpeed = parseInt(localStorage.getItem('migo_v5_max_speed') || '200');
+    let v5ObstacleThresh = parseInt(localStorage.getItem('migo_v5_obstacle_thresh') || '15');
+    let obstacleGuardEnabled = (localStorage.getItem('migo_obstacle_guard') === 'true'); // persisted
     let v5Settings = {
       dpadInvertFB: false,
       dpadInvertLR: false,
@@ -3096,6 +3201,7 @@
     // --- Random Idle Scanning Logic ---
     let lastActivityTime = Date.now();
     let idleScanningInterval = null;
+    let isOtaActive = false; // Set true during OTA to suppress idle movements
 
     function resetActivityTimer() {
       lastActivityTime = Date.now();
@@ -3110,6 +3216,8 @@
     function startIdleScanning() {
       if (idleScanningInterval) return;
       idleScanningInterval = setInterval(() => {
+        // Do not perform idle movements while OTA firmware update is in progress
+        if (isOtaActive) return;
         const landingPage = document.getElementById('landingPage');
         if (myCharacteristic && landingPage && !landingPage.classList.contains('hidden')) {
           const idleTime = Date.now() - lastActivityTime;
@@ -3261,6 +3369,11 @@
               aionaLastPlugB = b;
               aionaLastPlugC = c;
               updateHUDWithMigoData(newMigo);
+
+              // Active Obstacle Guard: cut motor power immediately if obstacle comes in range while driving
+              if (typeof checkActiveObstacleGuard === 'function') {
+                checkActiveObstacleGuard(dist);
+              }
             }
           } else {
             printToConsole(`[${newMigo.name}] ${val}`);
@@ -3394,6 +3507,45 @@
           playVirtualBuzzer(parseFloat(parts[2]), parseFloat(parts[3]));
         }
       }
+
+      // 🛑 CENTRAL OBSTACLE GUARD GATEWAY
+      // Intercept ALL forward commands (D-pad F or Joystick forward) at low-level gateway
+      const isForwardRequest = (cmd === 'CMD:DIR:F') || (cmd.startsWith('CMD:JOY:') && (() => {
+        let p = cmd.split(':');
+        let l = parseInt(p[2] || '0'), r = parseInt(p[3] || '0');
+        return (l > 10 || r > 10);
+      })());
+
+      if (isForwardRequest && typeof obstacleGuardEnabled !== 'undefined' && obstacleGuardEnabled) {
+        // Drop forward input if emergency turn is running
+        if (typeof _emergencyTurnActive !== 'undefined' && _emergencyTurnActive) return;
+
+        // If obstacle is within threshold distance, drop forward command completely!
+        if (typeof isForwardObstacleBlocked === 'function' && isForwardObstacleBlocked()) {
+          isRobotDrivingForward = false;
+          if (typeof aionaLastKnownDist !== 'undefined' && aionaLastKnownDist > 1 && aionaLastKnownDist <= 5.0) {
+            if (typeof triggerEmergencyAvoidanceTurn === 'function') triggerEmergencyAvoidanceTurn();
+          } else {
+            if (typeof showObstacleBlockFeedback === 'function') showObstacleBlockFeedback();
+          }
+          // Reject command — do not write forward power to hardware!
+          return;
+        }
+      }
+
+      // Track active forward drive state
+      if (cmd === 'CMD:DIR:F') {
+        if (typeof _emergencyTurnActive !== 'undefined' && _emergencyTurnActive) return;
+        isRobotDrivingForward = true;
+      } else if (cmd.startsWith('CMD:JOY:')) {
+        let p = cmd.split(':');
+        let l = parseInt(p[2] || '0'), r = parseInt(p[3] || '0');
+        if (typeof _emergencyTurnActive !== 'undefined' && _emergencyTurnActive && (l > 10 || r > 10)) return;
+        isRobotDrivingForward = (l > 10 || r > 10);
+      } else if (cmd.startsWith('CMD:DIR:')) {
+        isRobotDrivingForward = false;
+      }
+
       const panel = document.getElementById("simPanel");
       if (panel && !panel.classList.contains("hidden")) {
         handleSimCmd(cmd);
@@ -8235,6 +8387,21 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       localStorage.setItem('migo_v5_settings', JSON.stringify(v5Settings));
     }
 
+    function saveSettingsFromHeader() {
+      saveV5Settings();
+      // Ensure current slider settings are also flushed to localStorage
+      const maxSpd = document.getElementById('maxSpeedSlider')?.value;
+      const obsThresh = document.getElementById('obstacleThreshSlider')?.value;
+      if (maxSpd) updateMaxSpeed(maxSpd);
+      if (obsThresh) updateObstacleThresh(obsThresh);
+
+      const badge = document.getElementById('settingsSavedBadge');
+      if (badge) {
+        badge.classList.remove('hidden');
+        setTimeout(() => badge.classList.add('hidden'), 2000);
+      }
+    }
+
     // ───────────────────────────────────────────────────────────────
     // SETTINGS MODAL
     // ───────────────────────────────────────────────────────────────
@@ -8246,6 +8413,8 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       if (od) { od.value = v5ObstacleThresh; updateObstacleThresh(v5ObstacleThresh, true); }
       // Sync toggle visuals
       ['dpadInvertFB', 'dpadInvertLR', 'joyInvertFB', 'joyInvertLR', 'blockInvertFB', 'blockInvertLR'].forEach(k => updateToggleVisual(k));
+      // Sync obstacle guard toggle in settings
+      applyObstacleGuardUI();
 
       // Sync Gemini API Key input and status
       const savedKey = localStorage.getItem('migo_gemini_api_key') || '';
@@ -8363,21 +8532,49 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       } catch (e) { badge.classList.add('hidden'); }
     }
 
+    // Helper: write OLED update message directly to the MIGO's write characteristic
+    // during OTA so we don't contend with the main GATT queue.
+    async function _sendOtaOledUpdate(activeMigo, pct, label) {
+      if (!activeMigo?.writeChar) return;
+      const enc = new TextEncoder();
+      const line1 = label || 'Updating...';
+      const line2 = `${pct}%`;
+      try {
+        await activeMigo.writeChar.writeValueWithoutResponse(enc.encode('CMD:OLED_CLEAR'));
+        await new Promise(r => setTimeout(r, 30));
+        await activeMigo.writeChar.writeValueWithoutResponse(enc.encode(`CMD:OLED_PRINT:0:0:2:${line1}`));
+        await new Promise(r => setTimeout(r, 30));
+        await activeMigo.writeChar.writeValueWithoutResponse(enc.encode(`CMD:OLED_PRINT:30:28:2:${line2}`));
+        await new Promise(r => setTimeout(r, 30));
+        await activeMigo.writeChar.writeValueWithoutResponse(enc.encode('CMD:OLED_SHOW'));
+      } catch (e) {
+        console.warn('[OTA OLED] Could not send OLED update:', e.message);
+      }
+    }
+
     // Core flash routine — separated so it can be called from both
     // the normal flow and the "Flash Anyway" confirmation button
     async function _executeOtaFlash(bytes, activeMigo) {
-      const container   = document.getElementById('otaProgressContainer');
-      const statusText  = document.getElementById('otaStatusText');
-      const percentText = document.getElementById('otaProgressPercent');
-      const progressBar = document.getElementById('otaProgressBar');
-      const completeMsg = document.getElementById('otaCompleteMsg');
-      const btn         = document.getElementById('startOtaBtn');
+      const container    = document.getElementById('otaProgressContainer');
+      const activeRow    = document.getElementById('otaProgressActive');
+      const statusText   = document.getElementById('otaStatusText');
+      const percentText  = document.getElementById('otaProgressPercent');
+      const progressBar  = document.getElementById('otaProgressBar');
+      const completeMsg  = document.getElementById('otaCompleteMsg');
+      const btn          = document.getElementById('startOtaBtn');
 
       document.getElementById('otaSameFirmwareWarning')?.classList.add('hidden');
       container.classList.remove('hidden');
-      if (completeMsg) completeMsg.classList.add('hidden');
+      if (activeRow)    activeRow.classList.remove('hidden');
+      if (completeMsg)  completeMsg.classList.add('hidden');
       btn.disabled = true;
       btn.classList.add('opacity-50', 'cursor-not-allowed');
+
+      // Suspend idle movements for the duration of OTA
+      isOtaActive = true;
+      sendCmd('CMD:DIR:S'); // Stop any in-progress motor movement immediately
+
+      let lastOledPct = -1; // -1 means "haven't shown 0% yet"
 
       try {
         statusText.innerText = 'Connecting to MIGO OTA Service…';
@@ -8389,7 +8586,14 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
         // 1. Send START header
         await otaChar.writeValue(new TextEncoder().encode(`START:${totalBytes}`));
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise(r => setTimeout(r, 150));
+
+        // Show "Updating... 0%" on OLED right after START handshake
+        // (after the delay so the ESP32 has switched to OTA receive mode)
+        await _sendOtaOledUpdate(activeMigo, 0, 'Updating...');
+        lastOledPct = 0;
+        percentText.innerText   = '0%';
+        progressBar.style.width = '0%';
 
         // 2. Stream 512-byte chunks
         const chunkSize = 512;
@@ -8400,6 +8604,13 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           percentText.innerText    = `${progress}%`;
           progressBar.style.width  = `${progress}%`;
           statusText.innerText     = `Flashing: ${Math.round((i + chunk.length) / 1024)} / ${Math.round(totalBytes / 1024)} KB`;
+
+          // Update OLED every 10% milestone to avoid overwhelming BLE (skip at 100% so we don't race reboot)
+          const milestone = Math.floor(progress / 10) * 10;
+          if (milestone >= lastOledPct + 10 && milestone < 100) {
+            lastOledPct = milestone;
+            try { await _sendOtaOledUpdate(activeMigo, milestone, 'Updating...'); } catch (e) {}
+          }
         }
 
         // 3. Success — store fingerprint in localStorage
@@ -8408,19 +8619,37 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         const date   = new Date().toLocaleString();
         localStorage.setItem('migo_ota_last_flash', JSON.stringify({ crc, sizeKb, date }));
 
-        statusText.innerText    = 'OTA Complete! MIGO is restarting…';
+        // Update UI: swap progress bar for success banner
         percentText.innerText   = '100%';
         progressBar.style.width = '100%';
+        statusText.innerText    = 'OTA Complete! MIGO is restarting…';
+        if (activeRow)   activeRow.classList.add('hidden');
         if (completeMsg) completeMsg.classList.remove('hidden');
         refreshOtaLastFlashedBadge();
 
+        // Safely attempt post-flash OLED update without letting GATT disconnect throw
+        try {
+          await _sendOtaOledUpdate(activeMigo, 100, 'Done!');
+        } catch (e) {
+          console.log('[OTA] Post-flash GATT disconnect expected during robot restart.');
+        }
+
       } catch (err) {
+        // If error occurs AFTER 100% completion, it's just the expected GATT disconnect when MIGO reboots!
+        if (progressBar && progressBar.style.width === '100%') {
+          console.log('[OTA] Suppressing expected BLE disconnect error on reboot:', err.message);
+          return;
+        }
         console.error('OTA Flash Failed:', err);
         statusText.innerText = `❌ OTA Failed: ${err.message}`;
+        // Restore MIGO face on failure
+        setTimeout(() => { sendCmd('CMD:FACE:IDLE'); }, 300);
         throw err;
       } finally {
         btn.disabled = false;
         btn.classList.remove('opacity-50', 'cursor-not-allowed');
+        // Re-enable idle movements
+        isOtaActive = false;
       }
     }
 
@@ -8552,41 +8781,71 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           container.classList.add('hidden');
           const corsPanel = document.getElementById('otaCorsErrorPanel');
           if (corsPanel) corsPanel.classList.remove('hidden');
-          throw new Error('Google Drive returned an HTML page instead of the .bin file — the file may need manual download due to virus scanning, or sharing is not set to “Anyone with the link”.');
+          throw new Error('Google Drive returned an HTML page instead of the .bin file — the file may need manual download due to virus scanning, or sharing is not set to "Anyone with the link".');
         }
 
-        if (bytes.length < 1000) throw new Error('Downloaded file too small or invalid. Check Google Drive sharing is set to “Anyone with the link can view”.');
+        if (bytes.length < 1000) throw new Error('Downloaded file too small or invalid. Check Google Drive sharing is set to "Anyone with the link can view".');
 
         btn.disabled = false;
         btn.classList.remove('opacity-50', 'cursor-not-allowed');
 
-        // ── Hash check ──
+        // ── Hash + URL check ──────────────────────────────────────────────
+        // Compute CRC before flashing — detect identical binaries even if URL changed.
         if (!forceFlash) {
-          const newCRC  = computeCRC32(bytes);
-          const sizeKb  = Math.round(bytes.length / 1024);
-          const stored  = localStorage.getItem('migo_ota_last_flash');
+          const newCRC    = computeCRC32(bytes);
+          const sizeKb    = Math.round(bytes.length / 1024);
+          const stored    = localStorage.getItem('migo_ota_last_flash');
+          const storedUrl = localStorage.getItem('migo_ota_last_url') || '';
+
+          let sameDetected = false;
+          let sameReason   = '';
+
+          // Primary: exact binary match via CRC32
           if (stored) {
             try {
               const last = JSON.parse(stored);
               if (last.crc === newCRC) {
-                // Same firmware — show in-page warning instead of flashing
-                container.classList.add('hidden');
-                if (detail) detail.textContent =
-                  `This file (${sizeKb} KB, CRC32: ${newCRC}) is identical to the firmware you last flashed on ${last.date}. Re-flashing won’t change anything on MIGO.`;
-                if (warning) {
-                  warning.classList.remove('hidden');
-                  // Wire "Flash Anyway" button to proceed with force flag
-                  const forceBtn = document.getElementById('otaForceFlashBtn');
-                  if (forceBtn) {
-                    forceBtn.onclick = null;
-                    forceBtn.onclick = () => _executeOtaFlash(bytes, activeMigo);
-                  }
-                }
-                return;
+                sameDetected = true;
+                sameReason = `This firmware file (${sizeKb} KB, CRC32: ${newCRC}) is identical to the one you last flashed on ${last.date}. Re-flashing won't change anything on MIGO.`;
               }
             } catch (e) { /* corrupt stored data — ignore and flash normally */ }
           }
+
+          // Secondary: same URL as last successful flash (file content may have changed)
+          if (!sameDetected && storedUrl && storedUrl === rawInput) {
+            const last = stored ? (() => { try { return JSON.parse(stored); } catch(e) { return null; } })() : null;
+            sameDetected = true;
+            sameReason = `You used this same link the last time you flashed on ${last?.date || 'a previous session'}. The file may or may not have changed — tap "Flash Anyway" to proceed.`;
+          }
+
+          if (sameDetected) {
+            // Hide progress, show warning panel with details
+            container.classList.add('hidden');
+            if (detail)  detail.textContent = sameReason;
+            if (warning) {
+              warning.classList.remove('hidden');
+              const forceBtn = document.getElementById('otaForceFlashBtn');
+              if (forceBtn) {
+                forceBtn.onclick = null;
+                forceBtn.onclick = () => {
+                  warning.classList.add('hidden');
+                  localStorage.setItem('migo_ota_last_url', rawInput);
+                  _executeOtaFlash(bytes, activeMigo);
+                };
+              }
+            }
+            return;
+          }
         }
+
+        // Store URL used for this flash (for future same-link detection)
+        localStorage.setItem('migo_ota_last_url', rawInput);
+
+        // Explicit status feedback for NEW firmware detection
+        const newCRC = computeCRC32(bytes);
+        const sizeKb = Math.round(bytes.length / 1024);
+        statusText.innerText = `✨ New firmware detected (${sizeKb} KB, CRC32: ${newCRC}) — Flashing to MIGO…`;
+        await new Promise(r => setTimeout(r, 600));
 
         // Different (or first-time) firmware — flash immediately
         await _executeOtaFlash(bytes, activeMigo);
@@ -8616,6 +8875,62 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       if (disp) disp.textContent = `${v5ObstacleThresh} cm`;
       if (!silent) localStorage.setItem('migo_v5_obstacle_thresh', v5ObstacleThresh);
     }
+
+    // ─── Obstacle Guard Toggle ────────────────────────────────────────────
+    function applyObstacleGuardUI() {
+      // ── Sidebar mini-toggle (Explorer / Inventor panel) ──────────────
+      const track  = document.getElementById('obstacleGuardTrack');
+      const status = document.getElementById('obstacleGuardStatus');
+      if (track) {
+        if (obstacleGuardEnabled) {
+          track.classList.add('on');
+        } else {
+          track.classList.remove('on');
+        }
+      }
+      if (status) {
+        status.innerHTML = obstacleGuardEnabled
+          ? `<span class="text-teal-300 font-bold">ON</span> &mdash; Stops at &le;&nbsp;${v5ObstacleThresh}&nbsp;cm`
+          : 'OFF &mdash; Guard disabled';
+      }
+
+      // ── Settings modal toggle ─────────────────────────────────────────
+      const settingsBtn   = document.getElementById('settingsObstacleGuardToggle');
+      const settingsKnob  = document.getElementById('settingsObstacleGuardKnob');
+      const settingsLabel = document.getElementById('settingsObstacleGuardLabel');
+      if (settingsBtn) {
+        if (obstacleGuardEnabled) {
+          settingsBtn.classList.remove('bg-slate-700');
+          settingsBtn.classList.add('bg-teal-500');
+        } else {
+          settingsBtn.classList.remove('bg-teal-500');
+          settingsBtn.classList.add('bg-slate-700');
+        }
+      }
+      if (settingsKnob) {
+        settingsKnob.style.transform = obstacleGuardEnabled ? 'translateX(16px)' : 'translateX(0)';
+      }
+      if (settingsLabel) {
+        settingsLabel.innerText = obstacleGuardEnabled ? 'On' : 'Off';
+        settingsLabel.className = obstacleGuardEnabled
+          ? 'text-[8px] text-teal-400 font-bold uppercase'
+          : 'text-[8px] text-white/40 font-bold uppercase';
+      }
+    }
+
+    function toggleObstacleGuard() {
+      obstacleGuardEnabled = !obstacleGuardEnabled;
+      localStorage.setItem('migo_obstacle_guard', obstacleGuardEnabled);
+      applyObstacleGuardUI();
+      // If guard just turned on and obstacle is already within range, stop immediately
+      if (obstacleGuardEnabled && isForwardObstacleBlocked()) {
+        sendCmd('CMD:DIR:S');
+        showObstacleBlockFeedback();
+      }
+    }
+
+    // Apply initial visual state on page load
+    document.addEventListener('DOMContentLoaded', () => { applyObstacleGuardUI(); });
 
     function toggleSetting(key) {
       v5Settings[key] = !v5Settings[key];
@@ -8787,10 +9102,86 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     // ═══════════════════════════════════════════════════════════════
     // COLLISION GUARD — blocks forward drive when obstacle is near
     // ═══════════════════════════════════════════════════════════════
+    // Track active forward drive state so telemetry checks only halt FORWARD motion
+    let isRobotDrivingForward = false;
+    let activeRobotDriveDirection = 'S'; // 'F', 'B', 'L', 'R', 'S', 'JOY_FORWARD', 'JOY_OTHER'
+
     // Returns true if a forward command should be suppressed right now.
     // "Forward" applies to both D-pad 'F' and positive joystick values.
     function isForwardObstacleBlocked() {
-      return aionaLastKnownDist < v5ObstacleThresh && aionaLastKnownDist < 990;
+      if (!obstacleGuardEnabled) return false; // Guard is toggled off
+      return aionaLastKnownDist > 1 && aionaLastKnownDist < v5ObstacleThresh && aionaLastKnownDist < 990;
+    }
+
+    // Active Obstacle Guard — cuts motor power & triggers 5cm emergency turn avoidance
+    let _emergencyTurnActive = false;
+
+    function triggerEmergencyAvoidanceTurn() {
+      if (_emergencyTurnActive) return;
+      _emergencyTurnActive = true;
+
+      // Pick random turn direction: Left or Right
+      const turnDir = Math.random() < 0.5 ? 'L' : 'R';
+      const turnName = turnDir === 'L' ? 'LEFT' : 'RIGHT';
+
+      isRobotDrivingForward = false;
+      activeRobotDriveDirection = turnDir;
+
+      // Show emergency toast
+      const existing = document.getElementById('dpadObstacleToast');
+      if (existing) existing.remove();
+      const toast = document.createElement('div');
+      toast.id = 'dpadObstacleToast';
+      toast.className = 'fixed bottom-32 left-1/2 -translate-x-1/2 z-[400] flex items-center gap-1.5 px-3 py-1.5 bg-red-950/95 backdrop-blur-sm border-2 border-red-500 text-red-100 text-[11px] font-extrabold rounded-xl shadow-2xl pointer-events-none animate-bounce';
+      toast.innerHTML = `<i class="ph-bold ph-shield-warning text-amber-400 text-sm animate-pulse"></i> 🚨 5cm Danger! Emergency Turn ${turnName}!`;
+      document.body.appendChild(toast);
+
+      if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 60]);
+
+      // Execute emergency turn command
+      sendCmd(`CMD:DIR:${turnDir}`);
+
+      // Hold turn for 550ms to ensure a complete ~90 degree turn away from obstacle
+      setTimeout(() => {
+        sendCmd('CMD:DIR:S');
+        activeRobotDriveDirection = 'S';
+        isRobotDrivingForward = false;
+        setTimeout(() => {
+          if (toast) {
+            toast.style.transition = 'opacity 0.4s';
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 400);
+          }
+        }, 600);
+      }, 550);
+
+      // Cooldown to lock out forward drive until turn finishes
+      setTimeout(() => {
+        _emergencyTurnActive = false;
+      }, 1000);
+    }
+
+    function checkActiveObstacleGuard(dist) {
+      if (!obstacleGuardEnabled) return;
+      if (dist <= 1 || dist >= 990) return; // ignore invalid or out-of-range readings
+
+      // 🚨 1. Dangerously close (<= 5.0cm): Trigger Emergency Avoidance Turn
+      if (dist <= 5.0) {
+        if (isRobotDrivingForward || joyActive) {
+          isRobotDrivingForward = false;
+          triggerEmergencyAvoidanceTurn();
+        }
+        return;
+      }
+
+      // 🛑 2. Distance within user-set threshold (e.g. 15cm, 25cm): Stop forward drive
+      if (dist < v5ObstacleThresh) {
+        if (isRobotDrivingForward) {
+          isRobotDrivingForward = false;
+          sendCmd('CMD:DIR:S'); // enforce hard stop for forward motion
+          showObstacleBlockFeedback();
+        }
+      }
     }
 
     let _obstacleBlockCooldown = false;
@@ -8826,14 +9217,26 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         const mappedCmd = getDpadCmd(rawCmd);
         // Block forward movement when obstacle is within threshold
         if (mappedCmd === 'F' && isForwardObstacleBlocked()) {
-          sendCmd('CMD:DIR:S'); // enforce stop
-          showObstacleBlockFeedback();
+          isRobotDrivingForward = false;
+          if (aionaLastKnownDist > 1 && aionaLastKnownDist <= 5.0) {
+            triggerEmergencyAvoidanceTurn();
+          } else {
+            sendCmd('CMD:DIR:S'); // enforce stop
+            showObstacleBlockFeedback();
+          }
           return;
         }
+        if (mappedCmd === 'F') isRobotDrivingForward = true;
+        activeRobotDriveDirection = mappedCmd; // 'F', 'B', 'L', or 'R'
         sendCmd(`CMD:DIR:${mappedCmd}`);
       };
 
-      const release = () => { if (rawCmd !== 'S') sendCmd('CMD:DIR:S'); };
+      const release = () => {
+        if (rawCmd !== 'S') {
+          activeRobotDriveDirection = 'S';
+          sendCmd('CMD:DIR:S');
+        }
+      };
       fresh.addEventListener('mousedown', press);
       fresh.addEventListener('mouseup', release);
       fresh.addEventListener('mouseleave', release);
@@ -8860,11 +9263,13 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         // Block forward joystick when obstacle is within threshold.
         // Both motors positive = moving forward; clamp to 0 to stop forward thrust.
         if (isForwardObstacleBlocked() && l > 0 && r > 0) {
+          activeRobotDriveDirection = 'S';
           showObstacleBlockFeedback();
           sendCmd('CMD:DIR:S'); // hard stop
           return;
         }
 
+        activeRobotDriveDirection = (l > 0 && r > 0) ? 'JOY_FORWARD' : 'JOY_OTHER';
         sendCmd(`CMD:JOY:${l}:${r}:`);
       }
     }, 50);
@@ -8893,6 +9298,9 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         }
         aionaLastKnownDist = dist;
         updateAionaSensorBadge(dist);
+        if (typeof checkActiveObstacleGuard === 'function') {
+          checkActiveObstacleGuard(dist);
+        }
 
         // Only act if AIONA page is active
         const aPage = document.getElementById('aionaPage');
