@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.1.10
+  MIGO Web Controller | Version: 8.1.11
   Change Log:
+  [Jul 31, 2026 10:05 AM] New Feature: Implemented lively speech gesture scheduler and default micro-movements (head tilts, LED blinks, motor wiggles) during speech.
   [Jul 31, 2026 08:55 AM] Fix: Fixed 12-second TTS hard timeout and added sentence chunking in Multi-MIGO Conversation Mode.
   [Jul 31, 2026 08:10 AM] Fix: Implemented sentence-chunking speech queue for AIONA TTS to prevent mid-sentence cut-off on long responses and stories.
   [Jul 30, 2026 11:20 PM] Fix: Clarified OTA firmware link label and description to support GitHub raw links alongside Google Drive.
   [Jul 30, 2026 11:18 PM] Fix: Repositioned MIGO BLE Robot Name and Global OTA Firmware Update settings after Block Code Inversion in Settings modal.
-  [Jul 30, 2026 11:15 PM] Fix: Limited MIGO BLE custom robot name input to 10 characters in Settings and Start screen to prevent BLE name overflow.
 -->
 
 <!DOCTYPE html>
@@ -7269,49 +7269,77 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       }, intervalTime);
     }
 
+    let gestureToggleState = 0;
     let lastGestureTime = 0;
     function triggerWordGesture(word, punctuation = '') {
       if (aionaSequenceRunning) return;
       const now = Date.now();
-      if (now - lastGestureTime < 600) return;
+      if (now - lastGestureTime < 350) return;
       const lowerWord = word.toLowerCase();
 
       if (["hello", "hi", "hey", "welcome", "greetings"].some(k => lowerWord.includes(k))) {
         lastGestureTime = now;
         aionaSetServo(30); // head tilt down
         sendCmd('CMD:LED:on');
+        sendCmd('CMD:JOY:90:90:'); // micro-hop forward
+        setTimeout(() => { sendCmd('CMD:DIR:S'); }, 70);
         setTimeout(() => { aionaSetServo(50); sendCmd('CMD:LED:off'); }, 250);
       } else if (["yes", "sure", "absolutely", "gladly", "happy", "excite", "great", "awesome", "wonderful", "love", "like", "agree"].some(k => lowerWord.includes(k)) || punctuation === '!') {
         lastGestureTime = now;
-        sendCmd('CMD:JOY:90:90:'); // quick hop forward
+        sendCmd('CMD:JOY:100:100:'); // quick hop forward
         aionaSetServo(30); // head tilt down
-        setTimeout(() => { sendCmd('CMD:DIR:S'); }, 80);
+        setTimeout(() => { sendCmd('CMD:DIR:S'); }, 70);
         setTimeout(() => { aionaSetServo(50); }, 250);
       } else if (["no", "not", "sad", "sorry", "unfortunately", "bad", "error", "bug", "wrong", "fail", "cannot"].some(k => lowerWord.includes(k))) {
         lastGestureTime = now;
-        sendCmd('CMD:JOY:-80:80:'); // head shake left
-        setTimeout(() => { sendCmd('CMD:JOY:80:-80:'); }, 100);
-        setTimeout(() => { sendCmd('CMD:DIR:S'); }, 200);
+        sendCmd('CMD:JOY:-90:90:'); // head shake left
+        setTimeout(() => { sendCmd('CMD:DIR:S'); sendCmd('CMD:JOY:90:-90:'); }, 80);
+        setTimeout(() => { sendCmd('CMD:DIR:S'); }, 160);
       } else if (["what", "why", "how", "who", "when", "query", "question", "wonder", "curious", "ask"].some(k => lowerWord.includes(k)) || punctuation === '?') {
         lastGestureTime = now;
         aionaSetServo(25); // curious head tilt left
-        setTimeout(() => { aionaSetServo(50); }, 400);
+        sendCmd('CMD:JOY:90:-90:'); // micro twist
+        setTimeout(() => { sendCmd('CMD:DIR:S'); }, 70);
+        setTimeout(() => { aionaSetServo(50); }, 300);
       } else if (["think", "thought", "processing", "maybe", "brain", "idea", "mind", "analyse"].some(k => lowerWord.includes(k))) {
         lastGestureTime = now;
         aionaSetServo(75); // thoughtful head tilt right
-        setTimeout(() => { aionaSetServo(50); }, 400);
+        sendCmd('CMD:JOY:-90:90:'); // micro twist
+        setTimeout(() => { sendCmd('CMD:DIR:S'); }, 70);
+        setTimeout(() => { aionaSetServo(50); }, 300);
       } else if (["move", "spin", "dance", "go", "forward", "run", "turn", "drive", "left", "right"].some(k => lowerWord.includes(k))) {
         lastGestureTime = now;
         sendCmd('CMD:JOY:90:-90:'); // quick twist
-        setTimeout(() => { sendCmd('CMD:DIR:S'); }, 120);
+        setTimeout(() => { sendCmd('CMD:DIR:S'); }, 90);
       } else if (["stop", "wait", "hold", "pause", "rest", "quiet", "hush"].some(k => lowerWord.includes(k))) {
         lastGestureTime = now;
         sendCmd('CMD:JOY:-90:-90:'); // quick jerk backward
-        setTimeout(() => { sendCmd('CMD:DIR:S'); }, 80);
+        setTimeout(() => { sendCmd('CMD:DIR:S'); }, 70);
       } else if (punctuation === ',') {
         lastGestureTime = now;
         aionaSetServo(40); // gentle nod
-        setTimeout(() => { aionaSetServo(50); }, 180);
+        setTimeout(() => { aionaSetServo(50); }, 150);
+      } else {
+        // Lively default micro-gestures for general expressive speech
+        lastGestureTime = now;
+        gestureToggleState = (gestureToggleState + 1) % 4;
+        if (gestureToggleState === 0) {
+          aionaSetServo(42); // subtle left head tilt
+          sendCmd('CMD:JOY:70:-70:'); // micro twist left
+          setTimeout(() => { sendCmd('CMD:DIR:S'); }, 50);
+          setTimeout(() => { aionaSetServo(50); }, 180);
+        } else if (gestureToggleState === 1) {
+          sendCmd('CMD:LED:on');
+          setTimeout(() => { sendCmd('CMD:LED:off'); }, 140);
+        } else if (gestureToggleState === 2) {
+          aionaSetServo(58); // subtle right head tilt
+          sendCmd('CMD:JOY:-70:70:'); // micro twist right
+          setTimeout(() => { sendCmd('CMD:DIR:S'); }, 50);
+          setTimeout(() => { aionaSetServo(50); }, 180);
+        } else if (gestureToggleState === 3) {
+          sendCmd('CMD:JOY:80:80:'); // micro nudge forward
+          setTimeout(() => { sendCmd('CMD:DIR:S'); }, 50);
+        }
       }
     }
 
@@ -7332,6 +7360,28 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         let chunkIndex = 0;
         let speechStarted = false;
         aionaSpeechRunning = true;
+
+        // Schedule timer-based speech gestures for expressive, lively motor movements
+        const wordsWithMetadata = [];
+        const wordRegex = /\b[a-zA-Z0-9']+\b[.,!?]?/g;
+        let match;
+        while ((match = wordRegex.exec(phoneticText)) !== null) {
+          const matchedText = match[0];
+          const word = matchedText.replace(/[.,!?]/g, '');
+          const puncMatch = matchedText.match(/[.,!?]$/);
+          const punctuation = puncMatch ? puncMatch[0] : '';
+          wordsWithMetadata.push({ word, punctuation });
+        }
+
+        let delayOffset = 0;
+        wordsWithMetadata.forEach((w) => {
+          setTimeout(() => {
+            if (aionaSpeechRunning && !aionaSequenceRunning) {
+              triggerWordGesture(w.word, w.punctuation);
+            }
+          }, delayOffset);
+          delayOffset += 330;
+        });
 
         if (commands && commands.length > 0) {
           executeAionaCommandSequence(commands);
@@ -9476,11 +9526,11 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     }
 
 
-    // Trigger expressive minor physical movement gestures on a specific MIGO (PWM 100 with 110ms motor nudges)
+    let convGestureToggleState = {};
     function triggerWordGestureToMigo(migo, migoIdx, word, punctuation = '') {
       if (!migo) return;
       const now = Date.now();
-      if (lastConvGestureTime[migoIdx] && (now - lastConvGestureTime[migoIdx] < 450)) return;
+      if (lastConvGestureTime[migoIdx] && (now - lastConvGestureTime[migoIdx] < 350)) return;
       const lowerWord = word.toLowerCase();
 
       if (["hello", "hi", "hey", "welcome", "greetings"].some(k => lowerWord.includes(k))) {
@@ -9488,45 +9538,67 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         sendCmdToMigo(migo, 'CMD:SERVO:30'); // head tilt down
         sendCmdToMigo(migo, 'CMD:LED:on');
         sendCmdToMigo(migo, 'CMD:JOY:100:100:'); // micro-hop forward
-        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 110);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 90);
         setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); sendCmdToMigo(migo, 'CMD:LED:off'); }, 250);
       } else if (["yes", "sure", "absolutely", "gladly", "happy", "excite", "great", "awesome", "wonderful", "love", "like", "agree"].some(k => lowerWord.includes(k)) || punctuation === '!') {
         lastConvGestureTime[migoIdx] = now;
         sendCmdToMigo(migo, 'CMD:SERVO:30'); // head nod
         sendCmdToMigo(migo, 'CMD:JOY:100:100:'); // micro-hop
-        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 110);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 90);
         setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 250);
       } else if (["no", "not", "sad", "sorry", "unfortunately", "bad", "error", "bug", "wrong", "fail", "cannot", "disagree"].some(k => lowerWord.includes(k))) {
         lastConvGestureTime[migoIdx] = now;
         sendCmdToMigo(migo, 'CMD:JOY:-100:100:'); // body shake left
-        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); sendCmdToMigo(migo, 'CMD:JOY:100:-100:'); }, 100);
-        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 200);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); sendCmdToMigo(migo, 'CMD:JOY:100:-100:'); }, 90);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 180);
       } else if (["what", "why", "how", "who", "when", "query", "question", "wonder", "curious", "ask"].some(k => lowerWord.includes(k)) || punctuation === '?') {
         lastConvGestureTime[migoIdx] = now;
         sendCmdToMigo(migo, 'CMD:SERVO:25'); // curious head tilt left
         sendCmdToMigo(migo, 'CMD:JOY:100:-100:'); // micro body twist
-        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 100);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 90);
         setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 300);
       } else if (["think", "thought", "processing", "maybe", "brain", "idea", "mind", "analyse"].some(k => lowerWord.includes(k))) {
         lastConvGestureTime[migoIdx] = now;
         sendCmdToMigo(migo, 'CMD:SERVO:75'); // thoughtful head tilt right
         sendCmdToMigo(migo, 'CMD:JOY:-100:100:'); // micro body twist
-        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 100);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 90);
         setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 300);
       } else if (["move", "spin", "dance", "go", "forward", "run", "turn", "drive", "left", "right"].some(k => lowerWord.includes(k))) {
         lastConvGestureTime[migoIdx] = now;
         sendCmdToMigo(migo, 'CMD:JOY:110:-110:'); // micro twist in place
-        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 110);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 100);
       } else if (["stop", "wait", "hold", "pause", "rest", "quiet"].some(k => lowerWord.includes(k))) {
         lastConvGestureTime[migoIdx] = now;
         sendCmdToMigo(migo, 'CMD:SERVO:60'); // arm dip
         sendCmdToMigo(migo, 'CMD:JOY:-100:-100:'); // brief micro-jerk back
-        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 100);
+        setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 90);
         setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 250);
       } else if (punctuation === ',') {
         lastConvGestureTime[migoIdx] = now;
         sendCmdToMigo(migo, 'CMD:SERVO:40'); // gentle nod
         setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 150);
+      } else {
+        // Lively default micro-gestures for general conversation
+        lastConvGestureTime[migoIdx] = now;
+        convGestureToggleState[migoIdx] = ((convGestureToggleState[migoIdx] || 0) + 1) % 4;
+        const st = convGestureToggleState[migoIdx];
+        if (st === 0) {
+          sendCmdToMigo(migo, 'CMD:SERVO:40');
+          sendCmdToMigo(migo, 'CMD:JOY:80:-80:');
+          setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 50);
+          setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 180);
+        } else if (st === 1) {
+          sendCmdToMigo(migo, 'CMD:LED:on');
+          setTimeout(() => { sendCmdToMigo(migo, 'CMD:LED:off'); }, 140);
+        } else if (st === 2) {
+          sendCmdToMigo(migo, 'CMD:SERVO:60');
+          sendCmdToMigo(migo, 'CMD:JOY:-80:80:');
+          setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 50);
+          setTimeout(() => { sendCmdToMigo(migo, 'CMD:SERVO:50'); }, 180);
+        } else if (st === 3) {
+          sendCmdToMigo(migo, 'CMD:JOY:90:90:');
+          setTimeout(() => { sendCmdToMigo(migo, 'CMD:DIR:S'); }, 50);
+        }
       }
     }
 
@@ -10060,7 +10132,18 @@ Now give your response as ${migoName}. Jump straight into the discussion — no 
               finishTurn();
             }, Math.min(maxAllowedTime, 120000));
 
-            function speakNextConvChunk() {
+          // Schedule timer-based speech gestures for expressive, lively motor movements in Conversation Mode
+          let convDelayOffset = 0;
+          wordsWithMetadata.forEach((w) => {
+            setTimeout(() => {
+              if (convModeActive && !convModeAborted && window['_convUtteranceQueue_' + idx]?.length > 0) {
+                triggerWordGestureToMigo(migo, idx, w.word, w.punctuation);
+              }
+            }, convDelayOffset);
+            convDelayOffset += 330;
+          });
+
+          function speakNextConvChunk() {
               if (chunkIndex >= chunks.length || convModeAborted || !convModeActive) {
                 finishTurn();
                 return;
