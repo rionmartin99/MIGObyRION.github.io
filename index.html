@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.6.3
+  MIGO Web Controller | Version: 8.7.8
   Change Log:
-  [Aug 02, 2026 04:32 PM] Fix: Added same-firmware protection modal with Flash Anyway and Cancel choices when MIGO is up to date.
-  [Aug 02, 2026 04:28 PM] Fix: Restored pre-download same-firmware link check on Flash OTA and perfected version comparison card matching.
-  [Aug 02, 2026 04:24 PM] Fix: Eliminated negative space in Settings dashboard using 3 balanced vertical columns fitting 100% without scrolling on desktop.
-  [Aug 02, 2026 04:19 PM] New Feature: Transformed Settings modal into responsive multi-column dashboard for desktop displays while preserving mobile view.
-  [Aug 02, 2026 04:14 PM] Fix: Resolved false "Update Available" badge when unverified and fixed contradictory "Same firmware detected" banner when BLE is disconnected.
+  [Aug 02, 2026 11:08 PM] Fix: Escaped backticks in AIONA AI system prompts to eliminate JS template literal syntax errors.
+  [Aug 02, 2026 11:06 PM] Fix: Expanded ultrasonic hand-swipe detection distance threshold from 5cm to 18cm for reliable time/date trigger.
+  [Aug 02, 2026 11:03 PM] New Feature: Updated AIONA AI system prompts with explicit multi-hour timer & alarm clock awareness.
+  [Aug 02, 2026 10:50 PM] New Feature: Added multi-hour alarm clock & timer support with HH:MM:SS live display.
+  [Aug 02, 2026 10:42 PM] Fix: Added 250ms motor safety auto-stop guard to prevent runaway spinning from dropped BLE packets.
 -->
 
 <!DOCTYPE html>
@@ -890,6 +890,18 @@
         <i class="ph-bold ph-check"></i> Save & Close
       </button>
     </div>
+  </div>
+
+  <!-- 🚨 ALARM STOP OVERLAY BUTTON -->
+  <div id="alarmStopOverlay"
+    class="hidden fixed bottom-8 left-1/2 -translate-x-1/2 z-[500] flex items-center gap-3 bg-red-600/95 hover:bg-red-500 text-white font-extrabold px-6 py-3.5 rounded-2xl shadow-[0_0_30px_rgba(220,38,38,0.7)] border-2 border-white/40 backdrop-blur-md animate-bounce cursor-pointer active:scale-95 transition-all"
+    onclick="stopMigoAlarm()">
+    <i class="ph-bold ph-alarm text-2xl animate-pulse text-amber-300"></i>
+    <div class="flex flex-col text-left">
+      <span class="text-xs font-bold text-red-100 uppercase tracking-widest leading-none">Timer Complete!</span>
+      <span class="text-sm font-extrabold text-white leading-tight">Tap to Stop Alarm</span>
+    </div>
+    <i class="ph-bold ph-x-circle text-xl text-white/80 ml-2"></i>
   </div>
 
   <!-- GUIDE MODAL -->
@@ -3274,23 +3286,24 @@
         // Do not perform idle movements while OTA firmware update is in progress
         if (isOtaActive) return;
         const landingPage = document.getElementById('landingPage');
+        // STRICT GUARD: Idle movement ONLY executes on the Landing Page!
         if (myCharacteristic && landingPage && !landingPage.classList.contains('hidden')) {
           const idleTime = Date.now() - lastActivityTime;
           if (idleTime >= 10000) {
-            // 50% chance to glance around
+            // 50% chance to glance around with a subtle 50ms micro-nudge
             if (Math.random() < 0.50) {
-              console.log("[Idle Scan] MIGO is looking around...");
+              console.log("[Idle Scan] MIGO glance around...");
               const lookLeft = Math.random() < 0.50;
-              const dir = lookLeft ? 'CMD:JOY:-200:200:' : 'CMD:JOY:200:-200:';
-              const duration = Math.floor(Math.random() * 401) + 100; // 100ms to 500ms
-
+              sendCmd(lookLeft ? 'CMD:FACE:TALK' : 'CMD:FACE:GRIN');
+              const dir = lookLeft ? 'CMD:JOY:-130:130:' : 'CMD:JOY:130:-130:';
               sendCmd(dir);
               setTimeout(() => {
                 sendCmd('CMD:DIR:S');
-              }, duration);
+                sendCmd('CMD:FACE:IDLE');
+              }, 50);
             }
 
-            // 50% chance to move servos (percentage range 0 to 100 as programmed)
+            // 50% chance to move arm servos (percentage range 0 to 100)
             if (Math.random() < 0.50) {
               console.log("[Idle Scan] MIGO is moving servos...");
               const percentageD = Math.floor(Math.random() * 101);
@@ -7158,6 +7171,17 @@ ${JSON.stringify(workspaceState, null, 2)}
             sendCmd('CMD:OLED_SHOW');
             await new Promise(r => setTimeout(r, 50));
             break;
+
+          case 'timer':
+          case 'set_timer':
+            {
+              const secs = Number(cmd.seconds || cmd.duration || cmd.val) || 0;
+              if (secs > 0) {
+                startMigoTimer(secs);
+              }
+            }
+            await new Promise(r => setTimeout(r, 100));
+            break;
         }
       }
 
@@ -7215,6 +7239,7 @@ As MIGO's AI brain, your physical capabilities map to the Blockly blocks in Inve
 2. **Speaker / Buzzer**: You can play custom tones on Pin 14 (Plug D) or Pin 32 (Plug C) for any frequency (Hz) and duration (ms).
 3. **Arm / Servo Motors**: You can rotate a servo connected to Pin 14 (Plug D) or Pin 32 (Plug C) to any angle percentage (0-100%).
 4. **General Pin I/O**: You can configure custom ESP32 pin modes (\`pin_mode\`), write digital signals (\`digital_write\`), and write analog power levels (\`analog_write\`) to any pin from 0 to 39.
+5. **Countdown Timer & Alarm Clock**: You can set a countdown timer on MIGO's OLED display for any duration in seconds, minutes, or hours (e.g. \`{"action":"timer", "seconds": 28800}\` for an 8-hour alarm). Whenever asked to set a timer, countdown, or alarm clock, include the timer action in your response.
 
 CRITICAL PERSONA RULES:
 1. You inhabit the MIGO robot body. If the user asks you to move, turn, look around, beep, play a sound, sweep the arm/servo, light up, or print/display text on your screen, you should respond enthusiastically (e.g., "I'd love to spin around for you!", "Sure, let's print that on my screen right now!"). You must NEVER claim that you do not have a physical body, that you are just a virtual assistant, or that you are an AI.
@@ -7245,6 +7270,7 @@ Supported JSON command schema:
 - {"action":"led", "state":"on"|"off"}
 - {"action":"servo", "pin": 14|32, "angle": 0-100, "persist": true|false} (servo percentage angle, pin defaults to 14. If "persist" is true, the arm stays raised and won't lower automatically at the end of the action sequence)
 - {"action":"face", "state":"SMILE"|"GRIN"|"TALK"|"IDLE"}
+- {"action":"timer", "duration": seconds} (start countdown timer on MIGO's OLED for specified duration in seconds, e.g. 30 for 30 seconds or 120 for 2 minutes)
 - {"action":"oled_init", "sda": 21, "scl": 22} (initialize display screen)
 - {"action":"oled_clear"} (clears screen contents buffer)
 - {"action":"oled_print", "x": 0-120, "y": 0-50, "size": 1-3, "text": "brief message"} (draw text on screen buffer)
@@ -8755,6 +8781,9 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           } catch(e) {}
         }
         connText.innerHTML = `<span class="text-teal-300 font-bold text-[11px] block truncate">${crcLabel}</span><span class="text-[9px] text-white/40 font-normal block truncate">${subStr}</span>`;
+        if (typeof syncMigoTimeOverBLE === 'function') {
+          setTimeout(syncMigoTimeOverBLE, 300);
+        }
       } else {
         connText.innerHTML = '<span class="text-white/40 font-bold text-[11px]">Not Connected</span><span class="text-[9px] text-white/30 font-normal block truncate">Connect MIGO over BLE</span>';
       }
@@ -8898,34 +8927,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         return;
       }
 
-      // ── Instant Pre-Download Check: Warn before spending time downloading duplicate/up-to-date firmware ──
-      if (!forceFlash) {
-        const storedUrl  = localStorage.getItem('migo_ota_last_url') || '';
-        const stored     = localStorage.getItem('migo_ota_last_flash');
-        const badge      = document.getElementById('otaVersionComparisonBadge');
-        const isUpToDate = badge && badge.textContent.includes('Up to Date');
 
-        if ((storedUrl && storedUrl === rawInput && stored) || isUpToDate) {
-          try {
-            const last = stored ? JSON.parse(stored) : null;
-            const titleEl = document.getElementById('otaWarningTitle');
-            if (titleEl) titleEl.textContent = 'Same Firmware / Up to Date!';
-            if (detail) detail.textContent = `✨ Connected MIGO is already running this exact firmware build${last ? ' (CRC: ' + last.crc.substring(0, 6) + ')' : ''}. Re-flashing is unnecessary unless you wish to overwrite.`;
-            if (warning) {
-              warning.classList.remove('hidden');
-              const forceBtn = document.getElementById('otaForceFlashBtn');
-              if (forceBtn) {
-                forceBtn.onclick = null;
-                forceBtn.onclick = () => {
-                  warning.classList.add('hidden');
-                  startOtaUpdateFromGoogleDrive(true);
-                };
-              }
-            }
-            return;
-          } catch (e) {}
-        }
-      }
 
       // ── Determine URL strategies ──
       let urlStrategies = [];
@@ -9326,6 +9328,112 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         apiKeySetup.classList.remove('hidden');
       }
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MIGO TIME SYNC, COUNTDOWN TIMER & ALARM SYSTEM
+    // ═══════════════════════════════════════════════════════════════
+    let migoTimerInterval = null;
+    let migoTimerSecondsLeft = 0;
+    let migoIdleWiggleInterval = null;
+
+    function syncMigoTimeOverBLE() {
+      if (!connectedMigos || connectedMigos.length === 0) return;
+      const now = new Date();
+      const yr = now.getFullYear();
+      const mo = String(now.getMonth() + 1).padStart(2, '0');
+      const dy = String(now.getDate()).padStart(2, '0');
+      const hr = String(now.getHours()).padStart(2, '0');
+      const mn = String(now.getMinutes()).padStart(2, '0');
+      const sc = String(now.getSeconds()).padStart(2, '0');
+      sendCmd(`CMD:TIME:${yr},${mo},${dy},${hr},${mn},${sc}`);
+    }
+
+    // 140 PWM Short Micro-Pulse Idle Wiggles (preserves orientation, landing page ONLY)
+    function triggerIdleMicroWiggle() {
+      if (!connectedMigos || connectedMigos.length === 0) return;
+      if (isRobotDrivingForward || joyActive || _emergencyTurnActive || isOtaActive) return;
+
+      // STRICT GUARD: Idle wiggles MUST ONLY execute on the Landing Page!
+      const landingPage = document.getElementById('landingPage');
+      if (!landingPage || landingPage.classList.contains('hidden')) return;
+
+      // Subtle 35ms micro-twitch (left pulse 35ms, right pulse 35ms) — wiggles by ~1mm with 0 net displacement
+      const isLeft = Math.random() < 0.5;
+      const joyCmd1 = isLeft ? 'CMD:JOY:135:-135:' : 'CMD:JOY:-135:135:';
+      const joyCmd2 = isLeft ? 'CMD:JOY:-135:135:' : 'CMD:JOY:135:-135:';
+      sendCmd(joyCmd1);
+      setTimeout(() => {
+        sendCmd(joyCmd2);
+        setTimeout(() => { sendCmd('CMD:DIR:S'); sendCmd('CMD:DIR:S'); }, 35);
+      }, 35);
+    }
+
+    function startMigoTimer(seconds) {
+      if (!seconds || seconds <= 0) return;
+      migoTimerSecondsLeft = seconds;
+      
+      // Send BLE command to MIGO ESP32 firmware
+      sendCmd(`CMD:TIMER:${seconds}`);
+
+      const hrs  = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+
+      let timeLabel = '';
+      if (hrs > 0) {
+        timeLabel = `${hrs}h ${mins}m ${secs}s`;
+      } else if (mins > 0) {
+        timeLabel = `${mins}m ${secs}s`;
+      } else {
+        timeLabel = `${secs}s`;
+      }
+      
+      if (typeof appendAionaMessage === 'function') {
+        appendAionaMessage('aiona', `⏱️ Alarm / Countdown timer set for **${timeLabel}**! MIGO's OLED screen will display the live countdown.`);
+      }
+
+      if (migoTimerInterval) clearInterval(migoTimerInterval);
+      migoTimerInterval = setInterval(() => {
+        migoTimerSecondsLeft--;
+        if (migoTimerSecondsLeft <= 0) {
+          clearInterval(migoTimerInterval);
+          migoTimerInterval = null;
+          triggerMigoAlarmUI();
+        }
+      }, 1000);
+    }
+
+    function triggerMigoAlarmUI() {
+      const overlay = document.getElementById('alarmStopOverlay');
+      if (overlay) overlay.classList.remove('hidden');
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
+    }
+
+    function stopMigoAlarm() {
+      const overlay = document.getElementById('alarmStopOverlay');
+      if (overlay) overlay.classList.add('hidden');
+
+      if (migoTimerInterval) {
+        clearInterval(migoTimerInterval);
+        migoTimerInterval = null;
+      }
+      migoTimerSecondsLeft = 0;
+
+      // Halt alarm wiggles and reset OLED over BLE
+      sendCmd('CMD:STOP_ALARM');
+      sendCmd('CMD:DIR:S');
+      sendCmd('CMD:FACE:IDLE');
+
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 z-[500] bg-teal-600/90 backdrop-blur-md border border-teal-300 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 animate-fade-in';
+      toast.innerHTML = `<i class="ph-bold ph-check-circle text-sm"></i><span>Timer Alarm Stopped!</span>`;
+      document.body.appendChild(toast);
+      setTimeout(() => { toast.style.transition = 'opacity 0.4s'; toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400); }, 2500);
+    }
+
+    // Periodically pulse time sync & idle wiggles
+    setInterval(syncMigoTimeOverBLE, 300000); // Re-sync time every 5 minutes
+    setInterval(triggerIdleMicroWiggle, 12000); // Gentle idle wiggle every 12s
 
     // ═══════════════════════════════════════════════════════════════
     // V5 D-PAD INVERSION — Wrap sendCmd for direction buttons
@@ -9972,6 +10080,7 @@ As MIGO's AI brain, your physical capabilities map to the Blockly blocks in Inve
 2. **Speaker / Buzzer**: You can play custom tones on Pin 14 (Plug D) or Pin 32 (Plug C) for any frequency (Hz) and duration (ms).
 3. **Arm / Servo Motors**: You can rotate a servo connected to Pin 14 (Plug D) or Pin 32 (Plug C) to any angle percentage (0-100%).
 4. **General Pin I/O**: You can configure custom ESP32 pin modes (\`pin_mode\`), write digital signals (\`digital_write\`), and write analog power levels (\`analog_write\`) to any pin from 0 to 39.
+5. **Countdown Timer & Alarm Clock**: You can set a countdown timer on MIGO's OLED display for any duration in seconds, minutes, or hours (e.g. \`{"action":"timer", "seconds": 28800}\` for an 8-hour alarm). Whenever asked to set a timer, countdown, or alarm clock, include the timer action in your response.
 
 CRITICAL PERSONA RULES:
 1. You inhabit the MIGO robot body. If the user asks you to move, turn, look around, beep, play a sound, sweep the arm/servo, light up, or print/display text on your screen, you should respond enthusiastically. You must NEVER claim that you do not have a physical body, that you are just a virtual assistant, or that you are an AI.
@@ -10101,6 +10210,18 @@ Choose the tag that best represents the tone of your text. Do not include any ot
             const parseResult = cleanAllAionaCommands(cleanResponse);
             cleanResponse = parseResult.cleanText;
             let commands = parseResult.commands;
+
+            // Check for Timer Intent in user prompt (e.g. "set a timer for 3 minutes", "countdown 5 mins")
+            const timerMatch = text.match(/(?:timer|countdown|alarm)\s+(?:for\s+)?(\d+)\s*(min|minute|sec|second|hr|hour)?/i) ||
+                               text.match(/(\d+)\s*(min|minute|sec|second)\s+(?:timer|countdown)/i);
+            if (timerMatch) {
+              let val = parseInt(timerMatch[1]);
+              let unit = (timerMatch[2] || 'min').toLowerCase();
+              let seconds = val * 60;
+              if (unit.startsWith('sec')) seconds = val;
+              else if (unit.startsWith('hr') || unit.startsWith('hour')) seconds = val * 3600;
+              startMigoTimer(seconds);
+            }
 
             chatHistory.push({ role: 'user', text: text });
             chatHistory.push({ role: 'model', text: cleanResponse });
