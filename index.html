@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.2.0
+  MIGO Web Controller | Version: 8.3.0
   Change Log:
+  [Aug 02, 2026 12:05 PM] New Feature: Added full offline support and PWA capability with Service Worker caching (sw.js) and web app manifest (manifest.json).
   [Jul 31, 2026 11:55 PM] New Feature: Added variable pin I/O blocks (setup_pin_var, digital_write_var, analog_write_var, read_digital_var, read_analog_var) allowing digital and analog read/write operations using declared variables.
   [Jul 31, 2026 11:38 PM] Fix: Implemented central Obstacle Guard enforcement inside sendCmd() gateway — completely blocks all forward commands (including rapid button mashing) when an obstacle is within threshold.
   [Jul 31, 2026 11:33 PM] Fix: Suppressed held forward input during 5cm Emergency Avoidance Turn — sendCmd() rejects forward commands while turning so MIGO completes a full turn away from walls without stuttering.
   [Jul 31, 2026 11:28 PM] Fix: Harmonized Obstacle Guard threshold and 5cm danger zone — sendCmd() tracks forward drive state globally, ensuring threshold stopping (v5ObstacleThresh) and 5cm emergency turns work seamlessly without conflict.
-  [Jul 31, 2026 11:23 PM] Fix: Fixed Obstacle Guard threshold precedence — user distance setting (v5ObstacleThresh) now loads on startup and triggers early stop before 5cm emergency turn.
 -->
 
 <!DOCTYPE html>
@@ -15,6 +15,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>MIGO Robot Controller v8</title>
+
+  <!-- PWA Manifest & Theme -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -10673,6 +10679,17 @@ Now give your response as ${migoName}. Jump straight into the discussion — no 
       <rect x="30" y="68" width="40" height="20" rx="8" fill="#14b8a6" stroke="#0f766e" stroke-width="3" />
     </svg>
   </button>
+
+  <!-- Service Worker Registration for Offline PWA -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('MIGO PWA Service Worker Registered:', reg.scope))
+          .catch(err => console.error('MIGO PWA Service Worker Registration Failed:', err));
+      });
+    }
+  </script>
 </body>
 
 </html>
