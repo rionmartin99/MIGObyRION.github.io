@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.8.1
+  MIGO Web Controller | Version: 8.9.2
   Change Log:
+  [Aug 04, 2026 03:48 AM] Fix: Re-organized Desktop Settings layout, placing Power & Screen Sleep card below Block Code Inversion.
+  [Aug 04, 2026 03:40 AM] Fix: Added interactive enable/disable toggle for MIGO Controller Sleep Mode with slider state sync.
+  [Aug 04, 2026 03:35 AM] New Feature: Added Screen Wake Lock, Idle Animation setting toggle, and MIGO Controller Sleep Overlay timer.
   [Aug 03, 2026 09:15 PM] Fix: Resolved emergency 5cm obstacle turn trigger to include 0-5cm range and bypass motion state requirement.
   [Aug 03, 2026 08:55 PM] New Feature: Added Progressive Web App (PWA) Service Worker registration and local Blockly library integration for 100% offline access.
-  [Aug 03, 2026 09:45 AM] Fix: Removed false CRC fallback and added real BLE firmware version parsing (VER:v8.4.1).
-  [Aug 03, 2026 09:25 AM] Fix: Added 80ms D-Pad heartbeat drive timer and restricted OLED time/date display to Landing Page.
-  [Aug 02, 2026 11:08 PM] Fix: Escaped backticks in AIONA AI system prompts to eliminate JS template literal syntax errors.
 -->
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v8.8.0</title>
+  <title>MIGO Robot Controller v8.9.2</title>
 
   <!-- PWA Manifest & Theme -->
   <link rel="manifest" href="./manifest.json">
@@ -296,6 +296,14 @@
 
     .animate-pulse-red {
       animation: pulse-red 1.2s infinite;
+    }
+
+    /* Landing Page Idle Animation Disable */
+    .no-landing-idle *,
+    .no-landing-idle .animate-bounce-subtle,
+    .no-landing-idle .animate-pulse {
+      animation: none !important;
+      transition: none !important;
     }
 
     /* Custom Servo Slider styling */
@@ -693,6 +701,59 @@
             </div>
           </div>
 
+          <!-- Power & Screen Sleep Settings -->
+          <div>
+            <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <i class="ph-bold ph-battery-charging text-xs"></i> Power &amp; Screen Sleep
+            </p>
+            <div class="bg-black/30 border border-white/10 rounded-xl p-4 space-y-3">
+              <!-- Landing Page Idle Animation Toggle -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-xs font-semibold text-white/80">Landing Page Animations</p>
+                  <p class="text-[9px] text-white/40">Disable landing page idle animations to save battery</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0 ml-2">
+                  <span id="landingIdleAnimLabel" class="text-[8px] text-white/40 font-bold uppercase">On</span>
+                  <button id="landingIdleAnimToggle" onclick="toggleSetting('landingIdleAnim')"
+                    class="w-10 h-6 bg-teal-500 rounded-full p-0.5 transition-all relative flex items-center cursor-pointer"
+                    title="Toggle Landing Page Animations">
+                    <span id="landingIdleAnimKnob" class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Simulated Sleep Mode Toggle -->
+              <div class="border-t border-white/5 pt-3 flex items-center justify-between">
+                <div>
+                  <p class="text-xs font-semibold text-white/80">MIGO Controller Sleep Mode</p>
+                  <p class="text-[9px] text-white/40">Black overlay on idle while keeping background active</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0 ml-2">
+                  <span id="simulatedSleepLabel" class="text-[8px] text-white/40 font-bold uppercase">On</span>
+                  <button id="simulatedSleepToggle" onclick="toggleSetting('simulatedSleepEnabled')"
+                    class="w-10 h-6 bg-teal-500 rounded-full p-0.5 transition-all relative flex items-center cursor-pointer"
+                    title="Toggle Simulated Sleep Mode">
+                    <span id="simulatedSleepKnob" class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Inactivity Sleep Timeout Slider -->
+              <div id="sleepTimeoutContainer" class="border-t border-white/5 pt-3 transition-all duration-200">
+                <div class="flex justify-between items-center mb-1.5">
+                  <label class="text-xs font-semibold text-white/80">Idle Sleep Timeout</label>
+                  <span id="sleepTimeoutDisplay"
+                    class="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">5 min</span>
+                </div>
+                <input type="range" id="sleepTimeoutSlider" min="1" max="30" value="5" step="1"
+                  oninput="updateSleepTimeout(this.value)"
+                  class="w-full h-2 rounded-full appearance-none cursor-pointer bg-slate-700 accent-emerald-400">
+                <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Minutes of inactivity before 10s countdown and black overlay activate.</p>
+              </div>
+            </div>
+          </div>
+
           <!-- Robot BLE Name Setting -->
           <div>
             <p class="text-[10px] text-teal-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
@@ -901,6 +962,41 @@
         class="w-full py-2.5 bg-teal-600 hover:bg-teal-500 active:scale-95 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer">
         <i class="ph-bold ph-check"></i> Save & Close
       </button>
+    </div>
+  </div>
+
+  <!-- SCREEN SLEEP COUNTDOWN WARNING MODAL -->
+  <div id="screenSleepWarningModal"
+    class="hidden fixed inset-0 z-[9990] flex flex-col items-center justify-center bg-black/85 backdrop-blur-md p-4 transition-all duration-300">
+    <div class="glass-panel bg-slate-900/95 border-amber-500/80 border-2 p-6 max-w-sm w-full text-center text-teal-50 shadow-2xl rounded-2xl flex flex-col items-center">
+      <div class="w-14 h-14 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-400 flex items-center justify-center text-2xl mb-3 animate-pulse">
+        <i class="ph-bold ph-moon-stars"></i>
+      </div>
+      <h3 class="text-xl font-bold text-amber-300 mb-1">Inactivity Sleep Notice</h3>
+      <p id="sleepCountdownText" class="text-sm font-semibold text-white/90 mb-4">
+        Screen sleeping in <span id="sleepCountdownNum" class="text-amber-400 font-bold text-lg font-mono">10</span> seconds...
+      </p>
+      <p class="text-[10px] text-white/50 mb-5 leading-normal">
+        Your robot and background connections will stay active while the screen dims to black to save battery.
+      </p>
+      <button onclick="cancelSleepCountdown()"
+        class="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 active:scale-95 text-slate-950 font-extrabold text-sm rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer">
+        <i class="ph-bold ph-hand-waving text-base"></i> Stay Awake
+      </button>
+    </div>
+  </div>
+
+  <!-- PITCH-BLACK OLED SIMULATED SLEEP OVERLAY -->
+  <div id="simulatedSleepOverlay"
+    class="hidden fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center select-none touch-none cursor-pointer"
+    onclick="wakeSimulatedSleep()">
+    <!-- Subtle Wake Screen Button -->
+    <div class="flex flex-col items-center gap-3 opacity-60 hover:opacity-100 transition-opacity">
+      <button onclick="event.stopPropagation(); wakeSimulatedSleep()"
+        class="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white/70 text-xs font-semibold backdrop-blur-md transition-all active:scale-95 flex items-center gap-2 shadow-2xl">
+        <i class="ph-bold ph-power text-amber-400"></i> Wake Screen
+      </button>
+      <span class="text-[10px] text-white/30 tracking-widest uppercase font-mono">Simulated Sleep • System Active</span>
     </div>
   </div>
 
@@ -2250,7 +2346,7 @@
       configurable: true
     });
 
-    // --- V5 Settings State (Declared at top to avoid Temporal Dead Zone ReferenceError) ---
+    // --- V5 Settings & Battery Saver State ---
     let v5MaxSpeed = parseInt(localStorage.getItem('migo_v5_max_speed') || '200');
     let v5ObstacleThresh = parseInt(localStorage.getItem('migo_v5_obstacle_thresh') || '15');
     let obstacleGuardEnabled = (localStorage.getItem('migo_obstacle_guard') === 'true'); // persisted
@@ -2261,7 +2357,15 @@
       joyInvertLR: false,
       blockInvertFB: false,
       blockInvertLR: false,
+      landingIdleAnim: true,
+      simulatedSleepEnabled: true,
+      sleepTimeoutMins: 5
     };
+    let inactivityTimer = null;
+    let sleepCountdownTimer = null;
+    let sleepCountdownVal = 10;
+    let isSimulatedSleeping = false;
+    let wakeLockObj = null;
     let aionaObstacleWarned = false;
     let aionaLastKnownDist = 999;
     let aionaLastPlugA = 0;
@@ -6310,6 +6414,12 @@ ${JSON.stringify(workspaceState, null, 2)}
       const count = connectedMigos.length;
       const activeCount = connectedMigos.filter(m => m.active).length;
 
+      if (count > 0) {
+        if (typeof requestWakeLock === 'function') requestWakeLock();
+      } else {
+        if (typeof releaseWakeLock === 'function') releaseWakeLock();
+      }
+
       let statusStr = "Status: Disconnected";
       if (count > 0) {
         statusStr = `Status: Connected (${activeCount}/${count} active)`;
@@ -8524,6 +8634,9 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       joyYInverted = v5Settings.joyInvertFB;
       localStorage.setItem('migo_joy_y_inverted', joyYInverted);
       updateInvertVisuals();
+
+      applyLandingIdleAnimUI();
+      resetInactivityTimer();
     }
 
     function saveV5Settings() {
@@ -8535,8 +8648,10 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       // Ensure current slider settings are also flushed to localStorage
       const maxSpd = document.getElementById('maxSpeedSlider')?.value;
       const obsThresh = document.getElementById('obstacleThreshSlider')?.value;
+      const slpTimeout = document.getElementById('sleepTimeoutSlider')?.value;
       if (maxSpd) updateMaxSpeed(maxSpd);
       if (obsThresh) updateObstacleThresh(obsThresh);
+      if (slpTimeout) updateSleepTimeout(slpTimeout);
 
       const badge = document.getElementById('settingsSavedBadge');
       if (badge) {
@@ -8553,10 +8668,12 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       // Sync sliders to current values
       const sl = document.getElementById('maxSpeedSlider');
       const od = document.getElementById('obstacleThreshSlider');
+      const st = document.getElementById('sleepTimeoutSlider');
       if (sl) { sl.value = v5MaxSpeed; updateMaxSpeed(v5MaxSpeed, true); }
       if (od) { od.value = v5ObstacleThresh; updateObstacleThresh(v5ObstacleThresh, true); }
+      if (st) { st.value = v5Settings.sleepTimeoutMins || 5; updateSleepTimeout(st.value, true); }
       // Sync toggle visuals
-      ['dpadInvertFB', 'dpadInvertLR', 'joyInvertFB', 'joyInvertLR', 'blockInvertFB', 'blockInvertLR'].forEach(k => updateToggleVisual(k));
+      ['dpadInvertFB', 'dpadInvertLR', 'joyInvertFB', 'joyInvertLR', 'blockInvertFB', 'blockInvertLR', 'landingIdleAnim', 'simulatedSleepEnabled'].forEach(k => updateToggleVisual(k));
       // Sync obstacle guard toggle in settings
       applyObstacleGuardUI();
 
@@ -9239,6 +9356,12 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         localStorage.setItem('migo_joy_y_inverted', joyYInverted);
         updateInvertVisuals();
       }
+      if (key === 'landingIdleAnim') {
+        applyLandingIdleAnimUI();
+      }
+      if (key === 'simulatedSleepEnabled') {
+        resetInactivityTimer();
+      }
     }
 
     function updateToggleVisual(key) {
@@ -9250,6 +9373,8 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         joyInvertLR: { btn: 'joyLRToggle', label: 'joyLRLabel', color: 'bg-purple-500' },
         blockInvertFB: { btn: 'blockFBToggle', label: 'blockFBLabel', color: 'bg-amber-500' },
         blockInvertLR: { btn: 'blockLRToggle', label: 'blockLRLabel', color: 'bg-amber-500' },
+        landingIdleAnim: { btn: 'landingIdleAnimToggle', label: 'landingIdleAnimLabel', color: 'bg-teal-500' },
+        simulatedSleepEnabled: { btn: 'simulatedSleepToggle', label: 'simulatedSleepLabel', color: 'bg-teal-500' },
       };
       const m = map[key];
       if (!m) return;
@@ -9261,7 +9386,141 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         if (knob) knob.style.left = on ? 'calc(100% - 22px)' : '2px';
       }
       if (lbl) { lbl.textContent = on ? 'On' : 'Off'; lbl.className = `text-[8px] font-bold uppercase ${on ? 'text-white' : 'text-white/40'}`; }
+
+      if (key === 'simulatedSleepEnabled') {
+        const container = document.getElementById('sleepTimeoutContainer');
+        const slider = document.getElementById('sleepTimeoutSlider');
+        if (container) {
+          if (on) {
+            container.classList.remove('opacity-40', 'pointer-events-none');
+          } else {
+            container.classList.add('opacity-40', 'pointer-events-none');
+          }
+        }
+        if (slider) slider.disabled = !on;
+      }
     }
+
+    function applyLandingIdleAnimUI() {
+      const landing = document.getElementById('landingPage');
+      if (!landing) return;
+      if (v5Settings.landingIdleAnim === false) {
+        landing.classList.add('no-landing-idle');
+      } else {
+        landing.classList.remove('no-landing-idle');
+      }
+    }
+
+    function updateSleepTimeout(val, silent = false) {
+      v5Settings.sleepTimeoutMins = parseInt(val) || 5;
+      const disp = document.getElementById('sleepTimeoutDisplay');
+      if (disp) disp.textContent = `${v5Settings.sleepTimeoutMins} min`;
+      if (!silent) {
+        saveV5Settings();
+        resetInactivityTimer();
+      }
+    }
+
+    // ─── OLED Simulated Sleep & Screen Wake Lock Handlers ─────────────────
+    function resetInactivityTimer() {
+      if (isSimulatedSleeping) return;
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      if (sleepCountdownTimer) clearInterval(sleepCountdownTimer);
+
+      const warningModal = document.getElementById('screenSleepWarningModal');
+      if (warningModal && !warningModal.classList.contains('hidden')) {
+        warningModal.classList.add('hidden');
+      }
+
+      if (!v5Settings.simulatedSleepEnabled) return;
+
+      const timeoutMs = (v5Settings.sleepTimeoutMins || 5) * 60 * 1000;
+      const warnDelay = Math.max(0, timeoutMs - 10000);
+
+      inactivityTimer = setTimeout(() => {
+        startSleepCountdown();
+      }, warnDelay);
+    }
+
+    function startSleepCountdown() {
+      if (isSimulatedSleeping || !v5Settings.simulatedSleepEnabled) return;
+      sleepCountdownVal = 10;
+      const numSpan = document.getElementById('sleepCountdownNum');
+      const modal = document.getElementById('screenSleepWarningModal');
+      if (numSpan) numSpan.textContent = sleepCountdownVal;
+      if (modal) modal.classList.remove('hidden');
+
+      sleepCountdownTimer = setInterval(() => {
+        sleepCountdownVal--;
+        if (numSpan) numSpan.textContent = sleepCountdownVal;
+        if (sleepCountdownVal <= 0) {
+          clearInterval(sleepCountdownTimer);
+          if (modal) modal.classList.add('hidden');
+          activateSimulatedSleep();
+        }
+      }, 1000);
+    }
+
+    function cancelSleepCountdown() {
+      if (sleepCountdownTimer) clearInterval(sleepCountdownTimer);
+      const modal = document.getElementById('screenSleepWarningModal');
+      if (modal) modal.classList.add('hidden');
+      resetInactivityTimer();
+    }
+
+    function activateSimulatedSleep() {
+      isSimulatedSleeping = true;
+      const overlay = document.getElementById('simulatedSleepOverlay');
+      if (overlay) overlay.classList.remove('hidden');
+    }
+
+    function wakeSimulatedSleep() {
+      isSimulatedSleeping = false;
+      const overlay = document.getElementById('simulatedSleepOverlay');
+      if (overlay) overlay.classList.add('hidden');
+      resetInactivityTimer();
+      const isConn = connectedMigos && connectedMigos.some(m => m.active || (m.server && m.server.connected));
+      if (isConn) requestWakeLock();
+    }
+
+    async function requestWakeLock() {
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLockObj = await navigator.wakeLock.request('screen');
+          console.log('[Power] Screen Wake Lock acquired successfully.');
+        } catch (err) {
+          console.warn('[Power] Wake Lock request failed:', err);
+        }
+      }
+    }
+
+    function releaseWakeLock() {
+      if (wakeLockObj) {
+        wakeLockObj.release().then(() => {
+          wakeLockObj = null;
+          console.log('[Power] Screen Wake Lock released.');
+        }).catch(() => {});
+      }
+    }
+
+    // Attach user activity listeners for inactivity sleep timer
+    ['pointerdown', 'mousemove', 'keydown', 'touchstart'].forEach(evt => {
+      window.addEventListener(evt, () => {
+        if (!isSimulatedSleeping) resetInactivityTimer();
+      }, { passive: true });
+    });
+
+    // Handle visibilitychange (Screen unlock / Tab return)
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[Visibility] Page became visible.');
+        const isConn = connectedMigos && connectedMigos.some(m => m.active || (m.server && m.server.connected));
+        if (isConn) {
+          await requestWakeLock();
+        }
+        resetInactivityTimer();
+      }
+    });
 
     async function testAndSaveSettingsApiKey() {
       const input = document.getElementById('settingsApiKeyInput');
@@ -9414,6 +9673,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     function triggerIdleMicroWiggle() {
       if (!connectedMigos || connectedMigos.length === 0) return;
       if (isRobotDrivingForward || joyActive || _emergencyTurnActive || isOtaActive) return;
+      if (typeof v5Settings !== 'undefined' && v5Settings.landingIdleAnim === false) return;
 
       // STRICT GUARD: Idle wiggles MUST ONLY execute on the Landing Page!
       const landingPage = document.getElementById('landingPage');
