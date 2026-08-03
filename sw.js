@@ -1,5 +1,5 @@
-// MIGO Controller Service Worker v8.8.0
-const CACHE_NAME = 'migo-controller-cache-v8.8.0';
+// MIGO Controller Service Worker v8.9.9
+const CACHE_NAME = 'migo-controller-cache-v8.9.9';
 
 // Core local assets to cache on install
 const STATIC_ASSETS = [
@@ -14,12 +14,12 @@ const STATIC_ASSETS = [
   './lib/blockly/msg/en.js'
 ];
 
-// Install Event - Pre-cache core files
+// Install Event - Pre-cache core files & activate immediately
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
-      console.log('[MIGO ServiceWorker] Pre-caching core app shell');
+      console.log('[MIGO ServiceWorker] Pre-caching core app shell v8.9.9');
       for (const asset of STATIC_ASSETS) {
         try {
           await cache.add(asset);
@@ -31,7 +31,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate Event - Clean up stale caches
+// Activate Event - Clean up all stale caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -47,7 +47,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event - Cache First with Network Fallback & Background Update
+// Fetch Event - Network First for index.html / HTML pages, Cache First for static libraries
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
@@ -62,20 +62,30 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network First for index.html to prevent stale cache issues
+  if (req.mode === 'navigate' || url.pathname.endsWith('index.html') || url.pathname === '/' || url.pathname.endsWith('/')) {
+    event.respondWith(
+      fetch(req).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, responseToCache));
+        }
+        return networkResponse;
+      }).catch(() => caches.match(req))
+    );
+    return;
+  }
+
+  // Stale-While-Revalidate for libraries and static assets
   event.respondWith(
     caches.match(req).then((cachedResponse) => {
-      // Fetch fresh version from network in background (stale-while-revalidate)
       const fetchPromise = fetch(req).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200 && networkResponse.type !== 'opaque') {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(req, responseToCache));
         }
         return networkResponse;
-      }).catch((err) => {
-        console.log('[MIGO ServiceWorker] Offline request fallback:', req.url);
-      });
-
-      // Return cached asset immediately if available, otherwise wait for network fetch
+      }).catch(() => {});
       return cachedResponse || fetchPromise;
     })
   );

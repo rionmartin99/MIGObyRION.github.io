@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.9.4
+  MIGO Web Controller | Version: 8.9.9
   Change Log:
-  [Aug 04, 2026 04:12 AM] Fix: Synchronized CMD:LANDING:0 to ESP32 firmware when landing idle animations are disabled.
-  [Aug 04, 2026 03:58 AM] Fix: Enforced strict boolean default and instant motor stop for landing page idle animations.
-  [Aug 04, 2026 03:48 AM] Fix: Re-organized Desktop Settings layout, placing Power & Screen Sleep card below Block Code Inversion.
-  [Aug 04, 2026 03:40 AM] Fix: Added interactive enable/disable toggle for MIGO Controller Sleep Mode with slider state sync.
-  [Aug 04, 2026 03:35 AM] New Feature: Added Screen Wake Lock, Idle Animation setting toggle, and MIGO Controller Sleep Overlay timer.
+  [Aug 04, 2026 04:36 AM] Fix: Clarified Settings label to Robot Landing Idle Animations and verified instant hardware stop on OFF.
+  [Aug 04, 2026 04:34 AM] Fix: Focused landing idle setting strictly on physical robot hardware stop, restoring UI screen animations.
+  [Aug 04, 2026 04:30 AM] Fix: Separated 5-min time sync from 10s motor silence heartbeat to restore date/time triggers.
+  [Aug 04, 2026 04:28 AM] Fix: Updated SW cache to v8.9.6 with Network-First strategy and comprehensive CSS animation kill.
+  [Aug 04, 2026 04:25 AM] Fix: Blocked landing page 5cm obstacle turns and added 10s BLE motor silence heartbeat.
 -->
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v8.9.4</title>
+  <title>MIGO Robot Controller v8.9.9</title>
 
   <!-- PWA Manifest & Theme -->
   <link rel="manifest" href="./manifest.json">
@@ -298,13 +298,7 @@
       animation: pulse-red 1.2s infinite;
     }
 
-    /* Landing Page Idle Animation Disable */
-    .no-landing-idle *,
-    .no-landing-idle .animate-bounce-subtle,
-    .no-landing-idle .animate-pulse {
-      animation: none !important;
-      transition: none !important;
-    }
+
 
     /* Custom Servo Slider styling */
     #servoSlider {
@@ -710,8 +704,8 @@
               <!-- Landing Page Idle Animation Toggle -->
               <div class="flex items-center justify-between">
                 <div>
-                  <p class="text-xs font-semibold text-white/80">Landing Page Animations</p>
-                  <p class="text-[9px] text-white/40">Disable landing page idle animations to save battery</p>
+                  <p class="text-xs font-semibold text-white/80">Robot Landing Idle Animations</p>
+                  <p class="text-[9px] text-white/40">Disable physical MIGO motor wiggles on Landing Page</p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0 ml-2">
                   <span id="landingIdleAnimLabel" class="text-[8px] text-white/40 font-bold uppercase">On</span>
@@ -9406,12 +9400,12 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       if (!landing) return;
       const isLanding = !landing.classList.contains('hidden');
       if (typeof v5Settings !== 'undefined' && v5Settings.landingIdleAnim === false) {
-        landing.classList.add('no-landing-idle');
         sendLandingStateToMigo(false);
-        sendCmd('CMD:DIR:S');
+        sendCmd('CMD:IDLE:0');
+        sendCmd('CMD:ANIM:OFF');
+        sendCmd('CMD:FACE:STATIC');
         sendCmd('CMD:DIR:S');
       } else {
-        landing.classList.remove('no-landing-idle');
         sendLandingStateToMigo(isLanding);
       }
     }
@@ -9658,7 +9652,14 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       if (!connectedMigos || connectedMigos.length === 0) return;
       const animEnabled = typeof v5Settings === 'undefined' || v5Settings.landingIdleAnim !== false;
       const activeState = isLanding && animEnabled;
-      sendCmd(activeState ? 'CMD:LANDING:1' : 'CMD:LANDING:0');
+      if (activeState) {
+        sendCmd('CMD:LANDING:1');
+      } else {
+        sendCmd('CMD:LANDING:0');
+        sendCmd('CMD:IDLE:0');
+        sendCmd('CMD:ANIM:OFF');
+        sendCmd('CMD:DIR:S');
+      }
     }
 
     function syncMigoTimeOverBLE() {
@@ -9674,6 +9675,18 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       const landingPage = document.getElementById('landingPage');
       const isLanding = landingPage && !landingPage.classList.contains('hidden');
       sendLandingStateToMigo(isLanding);
+    }
+
+    function keepAliveMotorSilence() {
+      if (!connectedMigos || connectedMigos.length === 0) return;
+      const landingPage = document.getElementById('landingPage');
+      const isLanding = landingPage && !landingPage.classList.contains('hidden');
+      if (isLanding && typeof v5Settings !== 'undefined' && v5Settings.landingIdleAnim === false) {
+        sendCmd('CMD:LANDING:0');
+        sendCmd('CMD:IDLE:0');
+        sendCmd('CMD:ANIM:OFF');
+        sendCmd('CMD:DIR:S');
+      }
     }
 
     // 140 PWM Short Micro-Pulse Idle Wiggles (preserves orientation, landing page ONLY)
@@ -9761,7 +9774,8 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     }
 
     // Periodically pulse time sync & idle wiggles
-    setInterval(syncMigoTimeOverBLE, 300000); // Re-sync time every 5 minutes
+    setInterval(syncMigoTimeOverBLE, 300000); // Re-sync time every 5 minutes (preserves ESP32 date/time alarm triggers)
+    setInterval(keepAliveMotorSilence, 10000); // 10s motor silence heartbeat without resetting clock time
     setInterval(triggerIdleMicroWiggle, 12000); // Gentle idle wiggle every 12s
 
     // ═══════════════════════════════════════════════════════════════
@@ -9843,7 +9857,12 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       if (!obstacleGuardEnabled) return;
       if (dist < 0 || dist >= 990) return; // ignore out-of-range readings
 
-      // 🚨 1. Dangerously close (<= 5.0cm): Trigger Emergency Avoidance Turn
+      // Do NOT trigger emergency turns when resting on the Landing Page
+      const landingPage = document.getElementById('landingPage');
+      const isLanding = landingPage && !landingPage.classList.contains('hidden');
+      if (isLanding) return;
+
+      // 🚨 1. Dangerously close (<= 5.0cm): Trigger Emergency Avoidance Turn (only during active drive)
       if (dist <= 5.0) {
         isRobotDrivingForward = false;
         triggerEmergencyAvoidanceTurn();
