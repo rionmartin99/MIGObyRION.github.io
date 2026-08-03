@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.9.9
+  MIGO Web Controller | Version: 8.10.0
   Change Log:
+  [Aug 04, 2026 04:40 AM] Fix: Maintained CMD:LANDING:1 with CMD:WIGGLE:0 so ultrasonic hand swipe Date & Time trigger stays active while motors remain silent.
   [Aug 04, 2026 04:36 AM] Fix: Clarified Settings label to Robot Landing Idle Animations and verified instant hardware stop on OFF.
   [Aug 04, 2026 04:34 AM] Fix: Focused landing idle setting strictly on physical robot hardware stop, restoring UI screen animations.
   [Aug 04, 2026 04:30 AM] Fix: Separated 5-min time sync from 10s motor silence heartbeat to restore date/time triggers.
   [Aug 04, 2026 04:28 AM] Fix: Updated SW cache to v8.9.6 with Network-First strategy and comprehensive CSS animation kill.
-  [Aug 04, 2026 04:25 AM] Fix: Blocked landing page 5cm obstacle turns and added 10s BLE motor silence heartbeat.
 -->
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v8.9.9</title>
+  <title>MIGO Robot Controller v8.10.0</title>
 
   <!-- PWA Manifest & Theme -->
   <link rel="manifest" href="./manifest.json">
@@ -9651,11 +9651,19 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     function sendLandingStateToMigo(isLanding) {
       if (!connectedMigos || connectedMigos.length === 0) return;
       const animEnabled = typeof v5Settings === 'undefined' || v5Settings.landingIdleAnim !== false;
-      const activeState = isLanding && animEnabled;
-      if (activeState) {
+      if (isLanding) {
         sendCmd('CMD:LANDING:1');
+        if (!animEnabled) {
+          sendCmd('CMD:WIGGLE:0');
+          sendCmd('CMD:IDLE:0');
+          sendCmd('CMD:ANIM:OFF');
+          sendCmd('CMD:DIR:S');
+        } else {
+          sendCmd('CMD:WIGGLE:1');
+        }
       } else {
         sendCmd('CMD:LANDING:0');
+        sendCmd('CMD:WIGGLE:0');
         sendCmd('CMD:IDLE:0');
         sendCmd('CMD:ANIM:OFF');
         sendCmd('CMD:DIR:S');
@@ -9681,11 +9689,14 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       if (!connectedMigos || connectedMigos.length === 0) return;
       const landingPage = document.getElementById('landingPage');
       const isLanding = landingPage && !landingPage.classList.contains('hidden');
-      if (isLanding && typeof v5Settings !== 'undefined' && v5Settings.landingIdleAnim === false) {
-        sendCmd('CMD:LANDING:0');
-        sendCmd('CMD:IDLE:0');
-        sendCmd('CMD:ANIM:OFF');
-        sendCmd('CMD:DIR:S');
+      if (isLanding) {
+        if (typeof v5Settings !== 'undefined' && v5Settings.landingIdleAnim === false) {
+          sendCmd('CMD:LANDING:1');
+          sendCmd('CMD:WIGGLE:0');
+          sendCmd('CMD:IDLE:0');
+          sendCmd('CMD:ANIM:OFF');
+          sendCmd('CMD:DIR:S');
+        }
       }
     }
 
