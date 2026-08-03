@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.8.0
+  MIGO Web Controller | Version: 8.8.1
   Change Log:
+  [Aug 03, 2026 09:15 PM] Fix: Resolved emergency 5cm obstacle turn trigger to include 0-5cm range and bypass motion state requirement.
   [Aug 03, 2026 08:55 PM] New Feature: Added Progressive Web App (PWA) Service Worker registration and local Blockly library integration for 100% offline access.
   [Aug 03, 2026 09:45 AM] Fix: Removed false CRC fallback and added real BLE firmware version parsing (VER:v8.4.1).
   [Aug 03, 2026 09:25 AM] Fix: Added 80ms D-Pad heartbeat drive timer and restricted OLED time/date display to Landing Page.
   [Aug 02, 2026 11:08 PM] Fix: Escaped backticks in AIONA AI system prompts to eliminate JS template literal syntax errors.
-  [Aug 02, 2026 11:06 PM] Fix: Expanded ultrasonic hand-swipe detection distance threshold from 5cm to 18cm for reliable time/date trigger.
 -->
 
 <!DOCTYPE html>
@@ -9521,7 +9521,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     // "Forward" applies to both D-pad 'F' and positive joystick values.
     function isForwardObstacleBlocked() {
       if (!obstacleGuardEnabled) return false; // Guard is toggled off
-      return aionaLastKnownDist > 1 && aionaLastKnownDist < v5ObstacleThresh && aionaLastKnownDist < 990;
+      return aionaLastKnownDist >= 0 && aionaLastKnownDist < v5ObstacleThresh && aionaLastKnownDist < 990;
     }
 
     // Active Obstacle Guard — cuts motor power & triggers 5cm emergency turn avoidance
@@ -9574,14 +9574,12 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
     function checkActiveObstacleGuard(dist) {
       if (!obstacleGuardEnabled) return;
-      if (dist <= 1 || dist >= 990) return; // ignore invalid or out-of-range readings
+      if (dist < 0 || dist >= 990) return; // ignore out-of-range readings
 
       // 🚨 1. Dangerously close (<= 5.0cm): Trigger Emergency Avoidance Turn
       if (dist <= 5.0) {
-        if (isRobotDrivingForward || joyActive) {
-          isRobotDrivingForward = false;
-          triggerEmergencyAvoidanceTurn();
-        }
+        isRobotDrivingForward = false;
+        triggerEmergencyAvoidanceTurn();
         return;
       }
 
@@ -9669,7 +9667,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         // Block forward movement when obstacle is within threshold
         if (mappedCmd === 'F' && isForwardObstacleBlocked()) {
           isRobotDrivingForward = false;
-          if (aionaLastKnownDist > 1 && aionaLastKnownDist <= 5.0) {
+          if (aionaLastKnownDist >= 0 && aionaLastKnownDist <= 5.0) {
             triggerEmergencyAvoidanceTurn();
           } else {
             sendCmd('CMD:DIR:S'); // enforce stop
