@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.9.2
+  MIGO Web Controller | Version: 8.9.3
   Change Log:
+  [Aug 04, 2026 03:58 AM] Fix: Enforced strict boolean default and instant motor stop for landing page idle animations.
   [Aug 04, 2026 03:48 AM] Fix: Re-organized Desktop Settings layout, placing Power & Screen Sleep card below Block Code Inversion.
   [Aug 04, 2026 03:40 AM] Fix: Added interactive enable/disable toggle for MIGO Controller Sleep Mode with slider state sync.
   [Aug 04, 2026 03:35 AM] New Feature: Added Screen Wake Lock, Idle Animation setting toggle, and MIGO Controller Sleep Overlay timer.
   [Aug 03, 2026 09:15 PM] Fix: Resolved emergency 5cm obstacle turn trigger to include 0-5cm range and bypass motion state requirement.
-  [Aug 03, 2026 08:55 PM] New Feature: Added Progressive Web App (PWA) Service Worker registration and local Blockly library integration for 100% offline access.
 -->
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v8.9.2</title>
+  <title>MIGO Robot Controller v8.9.3</title>
 
   <!-- PWA Manifest & Theme -->
   <link rel="manifest" href="./manifest.json">
@@ -9404,8 +9404,10 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     function applyLandingIdleAnimUI() {
       const landing = document.getElementById('landingPage');
       if (!landing) return;
-      if (v5Settings.landingIdleAnim === false) {
+      if (typeof v5Settings !== 'undefined' && v5Settings.landingIdleAnim === false) {
         landing.classList.add('no-landing-idle');
+        sendCmd('CMD:DIR:S');
+        sendCmd('CMD:DIR:S');
       } else {
         landing.classList.remove('no-landing-idle');
       }
@@ -9673,7 +9675,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     function triggerIdleMicroWiggle() {
       if (!connectedMigos || connectedMigos.length === 0) return;
       if (isRobotDrivingForward || joyActive || _emergencyTurnActive || isOtaActive) return;
-      if (typeof v5Settings !== 'undefined' && v5Settings.landingIdleAnim === false) return;
+      if (typeof v5Settings === 'undefined' || v5Settings.landingIdleAnim !== true) return;
 
       // STRICT GUARD: Idle wiggles MUST ONLY execute on the Landing Page!
       const landingPage = document.getElementById('landingPage');
