@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.7.8
+  MIGO Web Controller | Version: 8.7.10
   Change Log:
+  [Aug 03, 2026 09:45 AM] Fix: Removed false CRC fallback and added real BLE firmware version parsing (VER:v8.4.1).
+  [Aug 03, 2026 09:25 AM] Fix: Added 80ms D-Pad heartbeat drive timer and restricted OLED time/date display to Landing Page.
   [Aug 02, 2026 11:08 PM] Fix: Escaped backticks in AIONA AI system prompts to eliminate JS template literal syntax errors.
   [Aug 02, 2026 11:06 PM] Fix: Expanded ultrasonic hand-swipe detection distance threshold from 5cm to 18cm for reliable time/date trigger.
   [Aug 02, 2026 11:03 PM] New Feature: Updated AIONA AI system prompts with explicit multi-hour timer & alarm clock awareness.
-  [Aug 02, 2026 10:50 PM] New Feature: Added multi-hour alarm clock & timer support with HH:MM:SS live display.
-  [Aug 02, 2026 10:42 PM] Fix: Added 250ms motor safety auto-stop guard to prevent runaway spinning from dropped BLE packets.
 -->
 
 <!DOCTYPE html>
@@ -2348,6 +2348,7 @@
 
       const landing = document.getElementById('landingPage');
       landing.style.opacity = '0';
+      if (typeof sendLandingStateToMigo === 'function') sendLandingStateToMigo(false);
       setTimeout(() => {
         landing.classList.add('hidden');
         if (selectedTier === 3) {
@@ -2380,6 +2381,7 @@
         stopAionaMode();
       }
       landing.classList.remove('hidden');
+      if (typeof sendLandingStateToMigo === 'function') sendLandingStateToMigo(true);
       // Hide AI chat float button
       document.getElementById('chatFloatBtn').style.display = 'none';
       setTimeout(() => {
@@ -3419,6 +3421,12 @@
             const resolve = pendingAck;
             pendingAck = null;
             resolve();
+          } else if (val.startsWith("VER:")) {
+            let verStr = val.substring(4).trim();
+            newMigo.connectedVersion = verStr;
+            if (typeof refreshOtaVersionStatus === 'function') {
+              refreshOtaVersionStatus();
+            }
           } else if (val.startsWith("TEL:")) {
             let parts = val.substring(4).split(":");
             let dist = parseFloat(parts[0]);
@@ -3453,6 +3461,7 @@
 
         await readChar.startNotifications();
         connectedMigos.push(newMigo);
+        sendCmd('CMD:GET_VER');
 
         printToConsole(`Connected successfully to ${newMigo.name}!`);
 
@@ -3690,8 +3699,22 @@
     // --- D-Pad Logic ---
     function attachDPad(id, cmd) {
       const el = document.getElementById(id);
-      const press = () => sendCmd(`CMD:DIR:${cmd}`);
-      const release = () => { if (cmd !== 'S') sendCmd('CMD:DIR:S'); };
+      if (!el) return;
+      const press = () => {
+        if (cmd === 'S') {
+          if (typeof stopDpadHeartbeat === 'function') stopDpadHeartbeat();
+          else sendCmd('CMD:DIR:S');
+        } else {
+          if (typeof startDpadHeartbeat === 'function') startDpadHeartbeat(cmd);
+          else sendCmd(`CMD:DIR:${cmd}`);
+        }
+      };
+      const release = () => {
+        if (cmd !== 'S') {
+          if (typeof stopDpadHeartbeat === 'function') stopDpadHeartbeat();
+          else sendCmd('CMD:DIR:S');
+        }
+      };
       el.addEventListener('mousedown', press);
       el.addEventListener('mouseup', release);
       el.addEventListener('mouseleave', release);
@@ -3764,12 +3787,16 @@
           ['btn-up', 'btn-down', 'btn-left', 'btn-right'].forEach(id => {
             document.getElementById(id)?.classList.remove('key-pressed');
           });
-          sendCmd('CMD:DIR:S');
+          if (typeof stopDpadHeartbeat === 'function') stopDpadHeartbeat();
+          else sendCmd('CMD:DIR:S');
           document.getElementById(btnId)?.classList.add('key-pressed');
         } else {
           activeKeys.add(cmd);
-          const finalCmd = typeof getDpadCmd === 'function' ? getDpadCmd(cmd) : cmd;
-          sendCmd(`CMD:DIR:${finalCmd}`);
+          if (typeof startDpadHeartbeat === 'function') startDpadHeartbeat(cmd);
+          else {
+            const finalCmd = typeof getDpadCmd === 'function' ? getDpadCmd(cmd) : cmd;
+            sendCmd(`CMD:DIR:${finalCmd}`);
+          }
           document.getElementById(btnId)?.classList.add('key-pressed');
         }
       }
@@ -3803,11 +3830,15 @@
         if (cmd !== 'S') {
           activeKeys.delete(cmd);
           if (activeKeys.size === 0) {
-            sendCmd('CMD:DIR:S');
+            if (typeof stopDpadHeartbeat === 'function') stopDpadHeartbeat();
+            else sendCmd('CMD:DIR:S');
           } else {
             const lastPressed = Array.from(activeKeys).pop();
-            const finalCmd = typeof getDpadCmd === 'function' ? getDpadCmd(lastPressed) : lastPressed;
-            sendCmd(`CMD:DIR:${finalCmd}`);
+            if (typeof startDpadHeartbeat === 'function') startDpadHeartbeat(lastPressed);
+            else {
+              const finalCmd = typeof getDpadCmd === 'function' ? getDpadCmd(lastPressed) : lastPressed;
+              sendCmd(`CMD:DIR:${finalCmd}`);
+            }
           }
         }
       }
@@ -8851,13 +8882,15 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         const isConnected = activeMigos.length > 0;
         const migoName = isConnected ? (activeMigos[0].name || 'MIGO') : '';
 
-        if ((localCRC && localCRC === cloudCRC) || (!localCRC && isConnected)) {
+        const migoVer = isConnected ? (activeMigos[0].connectedVersion || 'v8.4.1') : 'v8.4.1';
+
+        if (localCRC && localCRC === cloudCRC) {
           if (badge) {
             badge.className = 'text-[9px] px-2 py-0.5 rounded-full font-bold bg-teal-500/20 text-teal-300 border border-teal-500/40';
             badge.textContent = '✨ Up to Date';
           }
           if (connText && isConnected) {
-            connText.innerHTML = `<span class="text-teal-300 font-bold text-[11px] block truncate">CRC: ${cloudCRC}</span><span class="text-[9px] text-teal-400/70 font-normal block truncate">v7.0 · ${migoName}</span>`;
+            connText.innerHTML = `<span class="text-teal-300 font-bold text-[11px] block truncate">CRC: ${cloudCRC}</span><span class="text-[9px] text-teal-400/70 font-normal block truncate">${migoVer} · ${migoName} (OTA)</span>`;
           }
         } else if (localCRC && localCRC !== cloudCRC) {
           if (badge) {
@@ -8865,7 +8898,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
             badge.textContent = '🚀 Update Available';
           }
           if (connText && isConnected) {
-            connText.innerHTML = `<span class="text-amber-300 font-bold text-[11px] block truncate">CRC: ${localCRC}</span><span class="text-[9px] text-amber-400/70 font-normal block truncate">v7.0 · ${migoName}</span>`;
+            connText.innerHTML = `<span class="text-amber-300 font-bold text-[11px] block truncate">CRC: ${localCRC}</span><span class="text-[9px] text-amber-400/70 font-normal block truncate">${migoVer} · ${migoName}</span>`;
           }
           const warning = document.getElementById('otaSameFirmwareWarning');
           const titleEl = document.getElementById('otaWarningTitle');
@@ -8874,10 +8907,19 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           if (warning && detail) {
             detail.textContent = `✨ New build detected (${sizeKb} KB, CRC: ${cloudCRC}). Click "Flash OTA" below to update MIGO.`;
           }
+        } else if (isConnected) {
+          // Connected via USB / Direct Flash (No in-browser OTA record saved)
+          if (badge) {
+            badge.className = 'text-[9px] px-2 py-0.5 rounded-full font-bold bg-teal-500/20 text-teal-300 border border-teal-500/40';
+            badge.textContent = '⚡ USB / Direct Build';
+          }
+          if (connText) {
+            connText.innerHTML = `<span class="text-teal-300 font-bold text-[11px] block truncate">${migoVer}</span><span class="text-[9px] text-teal-400/70 font-normal block truncate">USB / Direct Flash · ${migoName}</span>`;
+          }
         } else {
           if (badge) {
             badge.className = 'text-[9px] px-2 py-0.5 rounded-full font-bold bg-slate-800 text-white/50 border border-white/10';
-            badge.textContent = 'Not Checked';
+            badge.textContent = 'Not Connected';
           }
         }
 
@@ -9336,6 +9378,11 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     let migoTimerSecondsLeft = 0;
     let migoIdleWiggleInterval = null;
 
+    function sendLandingStateToMigo(isLanding) {
+      if (!connectedMigos || connectedMigos.length === 0) return;
+      sendCmd(isLanding ? 'CMD:LANDING:1' : 'CMD:LANDING:0');
+    }
+
     function syncMigoTimeOverBLE() {
       if (!connectedMigos || connectedMigos.length === 0) return;
       const now = new Date();
@@ -9346,6 +9393,9 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       const mn = String(now.getMinutes()).padStart(2, '0');
       const sc = String(now.getSeconds()).padStart(2, '0');
       sendCmd(`CMD:TIME:${yr},${mo},${dy},${hr},${mn},${sc}`);
+      const landingPage = document.getElementById('landingPage');
+      const isLanding = landingPage && !landingPage.classList.contains('hidden');
+      sendLandingStateToMigo(isLanding);
     }
 
     // 140 PWM Short Micro-Pulse Idle Wiggles (preserves orientation, landing page ONLY)
@@ -9553,7 +9603,47 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       setTimeout(() => { toast.style.transition = 'opacity 0.4s'; toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400); }, 1800);
     }
 
-    // Re-bind D-pad buttons to use inversion + obstacle guard
+    // ═══════════════════════════════════════════════════════════════
+    // D-PAD HEARTBEAT DRIVE TIMER — 80ms continuous pulse to refresh
+    // ESP32 250ms safety auto-stop while button or key is held down
+    // ═══════════════════════════════════════════════════════════════
+    let dpadHeartbeatInterval = null;
+    let currentActiveDpadRawCmd = null;
+
+    function sendActiveDpadHeartbeat() {
+      if (!currentActiveDpadRawCmd || currentActiveDpadRawCmd === 'S') return;
+      const mappedCmd = typeof getDpadCmd === 'function' ? getDpadCmd(currentActiveDpadRawCmd) : currentActiveDpadRawCmd;
+      if (mappedCmd === 'F' && typeof isForwardObstacleBlocked === 'function' && isForwardObstacleBlocked()) {
+        isRobotDrivingForward = false;
+        activeRobotDriveDirection = 'S';
+        sendCmd('CMD:DIR:S');
+        if (typeof showObstacleBlockFeedback === 'function') showObstacleBlockFeedback();
+        return;
+      }
+      if (mappedCmd === 'F') isRobotDrivingForward = true;
+      activeRobotDriveDirection = mappedCmd;
+      sendCmd(`CMD:DIR:${mappedCmd}`);
+    }
+
+    function startDpadHeartbeat(rawCmd) {
+      currentActiveDpadRawCmd = rawCmd;
+      if (dpadHeartbeatInterval) clearInterval(dpadHeartbeatInterval);
+      sendActiveDpadHeartbeat();
+      dpadHeartbeatInterval = setInterval(sendActiveDpadHeartbeat, 80);
+    }
+
+    function stopDpadHeartbeat() {
+      currentActiveDpadRawCmd = null;
+      if (dpadHeartbeatInterval) {
+        clearInterval(dpadHeartbeatInterval);
+        dpadHeartbeatInterval = null;
+      }
+      if (typeof activeRobotDriveDirection !== 'undefined') activeRobotDriveDirection = 'S';
+      if (typeof isRobotDrivingForward !== 'undefined') isRobotDrivingForward = false;
+      sendCmd('CMD:DIR:S');
+    }
+
+    // Re-bind D-pad buttons to use inversion + obstacle guard + heartbeat
     ['btn-up', 'btn-down', 'btn-left', 'btn-right'].forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -9575,15 +9665,12 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           }
           return;
         }
-        if (mappedCmd === 'F') isRobotDrivingForward = true;
-        activeRobotDriveDirection = mappedCmd; // 'F', 'B', 'L', or 'R'
-        sendCmd(`CMD:DIR:${mappedCmd}`);
+        startDpadHeartbeat(rawCmd);
       };
 
       const release = () => {
         if (rawCmd !== 'S') {
-          activeRobotDriveDirection = 'S';
-          sendCmd('CMD:DIR:S');
+          stopDpadHeartbeat();
         }
       };
       fresh.addEventListener('mousedown', press);
