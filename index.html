@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.7.10
+  MIGO Web Controller | Version: 8.8.0
   Change Log:
+  [Aug 03, 2026 08:55 PM] New Feature: Added Progressive Web App (PWA) Service Worker registration and local Blockly library integration for 100% offline access.
   [Aug 03, 2026 09:45 AM] Fix: Removed false CRC fallback and added real BLE firmware version parsing (VER:v8.4.1).
   [Aug 03, 2026 09:25 AM] Fix: Added 80ms D-Pad heartbeat drive timer and restricted OLED time/date display to Landing Page.
   [Aug 02, 2026 11:08 PM] Fix: Escaped backticks in AIONA AI system prompts to eliminate JS template literal syntax errors.
   [Aug 02, 2026 11:06 PM] Fix: Expanded ultrasonic hand-swipe detection distance threshold from 5cm to 18cm for reliable time/date trigger.
-  [Aug 02, 2026 11:03 PM] New Feature: Updated AIONA AI system prompts with explicit multi-hour timer & alarm clock awareness.
 -->
 
 <!DOCTYPE html>
@@ -14,22 +14,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v8</title>
+  <title>MIGO Robot Controller v8.8.0</title>
 
   <!-- PWA Manifest & Theme -->
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0f766e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <!-- Service Worker Registration for PWA & Offline Support -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then((reg) => console.log('[PWA] Service Worker registered successfully with scope:', reg.scope))
+          .catch((err) => console.warn('[PWA] Service Worker registration failed:', err));
+      });
+    }
+  </script>
 
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Google Fonts: Outfit -->
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <!-- Blockly -->
-  <script src="https://unpkg.com/blockly/blockly_compressed.js"></script>
-  <script src="https://unpkg.com/blockly/blocks_compressed.js"></script>
-  <script src="https://unpkg.com/blockly/msg/en.js"></script>
+  <!-- Blockly (Local with CDN fallback for offline PWA support) -->
+  <script src="./lib/blockly/blockly_compressed.js" onerror="this.onerror=null;this.src='https://unpkg.com/blockly/blockly_compressed.js';"></script>
+  <script src="./lib/blockly/blocks_compressed.js" onerror="this.onerror=null;this.src='https://unpkg.com/blockly/blocks_compressed.js';"></script>
+  <script src="./lib/blockly/javascript_compressed.js" onerror="this.onerror=null;this.src='https://unpkg.com/blockly/javascript_compressed.js';"></script>
+  <script src="./lib/blockly/msg/en.js" onerror="this.onerror=null;this.src='https://unpkg.com/blockly/msg/en.js';"></script>
   <!-- Phosphor Icons -->
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
