@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.10.0
+  MIGO Web Controller | Version: 8.10.1
   Change Log:
+  [Aug 05, 2026 01:30 PM] Fix: Resolved microphone speech repeating words by evaluating full SpeechRecognition results array instead of appending interim transcripts to existing text.
   [Aug 04, 2026 04:40 AM] Fix: Maintained CMD:LANDING:1 with CMD:WIGGLE:0 so ultrasonic hand swipe Date & Time trigger stays active while motors remain silent.
   [Aug 04, 2026 04:36 AM] Fix: Clarified Settings label to Robot Landing Idle Animations and verified instant hardware stop on OFF.
   [Aug 04, 2026 04:34 AM] Fix: Focused landing idle setting strictly on physical robot hardware stop, restoring UI screen animations.
   [Aug 04, 2026 04:30 AM] Fix: Separated 5-min time sync from 10s motor silence heartbeat to restore date/time triggers.
-  [Aug 04, 2026 04:28 AM] Fix: Updated SW cache to v8.9.6 with Network-First strategy and comprehensive CSS animation kill.
 -->
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v8.10.0</title>
+  <title>MIGO Robot Controller v8.10.1</title>
 
   <!-- PWA Manifest & Theme -->
   <link rel="manifest" href="./manifest.json">
@@ -6888,16 +6888,12 @@ ${JSON.stringify(workspaceState, null, 2)}
 
       aionaManualRecognition.onresult = (e) => {
         hasUserSpoken = true;
-        // Only accumulate from e.resultIndex onward to prevent echo/repeated words
-        // on mobile where older results are re-delivered on each event
-        let text = "";
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          text += e.results[i][0].transcript;
+        // Evaluate full e.results array on each result event to prevent word repetition
+        let fullTranscript = "";
+        for (let i = 0; i < e.results.length; i++) {
+          fullTranscript += e.results[i][0].transcript;
         }
-        // Append to the existing displayed transcript for continuity across events
-        const existing = transcriptEl ? transcriptEl.innerText.replace(/^"|"$/g, '') : '';
-        const combined = (existing === '...' ? '' : existing) + text;
-        if (transcriptEl) transcriptEl.innerText = `"${combined.trim()}"`;
+        if (transcriptEl) transcriptEl.innerText = `"${fullTranscript.trim()}"`;
         resetAionaSilenceTimer(false); // Reset silence timer on every chunk of speech
       };
 
