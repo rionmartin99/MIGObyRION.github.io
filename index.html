@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.10.1
+  MIGO Web Controller | Version: 8.10.2
   Change Log:
+  [Aug 06, 2026 01:41 PM] Fix: Centered alarmStopOverlay for mobile screens and enhanced stopMigoAlarm with reliable BLE auto-reconnect & sequential command dispatch.
   [Aug 05, 2026 01:30 PM] Fix: Resolved microphone speech repeating words by evaluating full SpeechRecognition results array instead of appending interim transcripts to existing text.
   [Aug 04, 2026 04:40 AM] Fix: Maintained CMD:LANDING:1 with CMD:WIGGLE:0 so ultrasonic hand swipe Date & Time trigger stays active while motors remain silent.
   [Aug 04, 2026 04:36 AM] Fix: Clarified Settings label to Robot Landing Idle Animations and verified instant hardware stop on OFF.
   [Aug 04, 2026 04:34 AM] Fix: Focused landing idle setting strictly on physical robot hardware stop, restoring UI screen animations.
-  [Aug 04, 2026 04:30 AM] Fix: Separated 5-min time sync from 10s motor silence heartbeat to restore date/time triggers.
 -->
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v8.10.1</title>
+  <title>MIGO Robot Controller v8.10.2</title>
 
   <!-- PWA Manifest & Theme -->
   <link rel="manifest" href="./manifest.json">
@@ -996,7 +996,7 @@
 
   <!-- 🚨 ALARM STOP OVERLAY BUTTON -->
   <div id="alarmStopOverlay"
-    class="hidden fixed bottom-8 left-1/2 -translate-x-1/2 z-[500] flex items-center gap-3 bg-red-600/95 hover:bg-red-500 text-white font-extrabold px-6 py-3.5 rounded-2xl shadow-[0_0_30px_rgba(220,38,38,0.7)] border-2 border-white/40 backdrop-blur-md animate-bounce cursor-pointer active:scale-95 transition-all"
+    class="hidden fixed bottom-8 left-0 right-0 mx-auto w-max z-[500] flex items-center gap-3 bg-red-600/95 hover:bg-red-500 text-white font-extrabold px-6 py-3.5 rounded-2xl shadow-[0_0_30px_rgba(220,38,38,0.7)] border-2 border-white/40 backdrop-blur-md animate-bounce cursor-pointer active:scale-95 transition-all"
     onclick="stopMigoAlarm()">
     <i class="ph-bold ph-alarm text-2xl animate-pulse text-amber-300"></i>
     <div class="flex flex-col text-left">
@@ -9758,7 +9758,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
     }
 
-    function stopMigoAlarm() {
+    async function stopMigoAlarm() {
       const overlay = document.getElementById('alarmStopOverlay');
       if (overlay) overlay.classList.add('hidden');
 
@@ -9768,10 +9768,19 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       }
       migoTimerSecondsLeft = 0;
 
-      // Halt alarm wiggles and reset OLED over BLE
-      sendCmd('CMD:STOP_ALARM');
-      sendCmd('CMD:DIR:S');
-      sendCmd('CMD:FACE:IDLE');
+      // Auto-reconnect BLE if disconnected during long background countdown
+      const activeMigos = connectedMigos.filter(m => m.active);
+      if (activeMigos.length === 0) {
+        console.warn("[Alarm] BLE disconnected during timer. Attempting reconnect...");
+        if (typeof connectBLE === 'function') {
+          try { await connectBLE(); } catch(e) { console.error("[Alarm] Reconnect failed:", e); }
+        }
+      }
+
+      // Halt alarm wiggles and reset OLED sequentially over BLE
+      await sendCmd('CMD:STOP_ALARM');
+      await sendCmd('CMD:DIR:S');
+      await sendCmd('CMD:FACE:IDLE');
 
       const toast = document.createElement('div');
       toast.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 z-[500] bg-teal-600/90 backdrop-blur-md border border-teal-300 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 animate-fade-in';
