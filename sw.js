@@ -1,5 +1,5 @@
-// MIGO Controller Service Worker v8.10.1
-const CACHE_NAME = 'migo-controller-cache-v8.10.1';
+// MIGO Controller Service Worker v8.10.2
+const CACHE_NAME = 'migo-controller-cache-v8.10.2';
 
 // Core local assets to cache on install
 const STATIC_ASSETS = [
@@ -19,7 +19,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
-      console.log('[MIGO ServiceWorker] Pre-caching core app shell v8.10.1');
+      console.log('[MIGO ServiceWorker] Pre-caching core app shell v8.10.2');
       for (const asset of STATIC_ASSETS) {
         try {
           await cache.add(asset);

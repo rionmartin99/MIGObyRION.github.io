@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 8.10.2
+  MIGO Web Controller | Version: 7.6.4
   Change Log:
-  [Aug 06, 2026 01:41 PM] Fix: Centered alarmStopOverlay for mobile screens and enhanced stopMigoAlarm with reliable BLE auto-reconnect & sequential command dispatch.
-  [Aug 05, 2026 01:30 PM] Fix: Resolved microphone speech repeating words by evaluating full SpeechRecognition results array instead of appending interim transcripts to existing text.
-  [Aug 04, 2026 04:40 AM] Fix: Maintained CMD:LANDING:1 with CMD:WIGGLE:0 so ultrasonic hand swipe Date & Time trigger stays active while motors remain silent.
-  [Aug 04, 2026 04:36 AM] Fix: Clarified Settings label to Robot Landing Idle Animations and verified instant hardware stop on OFF.
-  [Aug 04, 2026 04:34 AM] Fix: Focused landing idle setting strictly on physical robot hardware stop, restoring UI screen animations.
+  [Aug 09, 2026 3:28 PM] Fix: Restored the 'Live Code Editor & Terminal' panel in the AI Code Engine modal. C++ code viewer, elapsed timer, and Run Code button are fully functional again.
+  [Aug 09, 2026 3:22 PM] Fix: Corrected STT word/phrase repetition bug in aionaManualRecognition. Loop now starts at e.resultIndex instead of 0, and final/interim results are tracked separately to prevent re-appending already-processed speech chunks.
+  [Aug 09, 2026 3:15 PM] UI: Removed the 'Live Code Editor & Terminal' panel from the AI Code Engine modal. The hidden textarea and timer are retained for JS compatibility. Console log expanded to fill space. Run Code button removed.
+  [Aug 09, 2026 3:08 PM] Fix: Replaced narrow C++ detection in Run Code button with robust multi-pattern check (void setup/loop, Serial, pinMode, delay, etc.) so C++ educational code is never accidentally executed as JavaScript.
+  [Aug 09, 2026 3:04 PM] Fix: Added JS code sanitizer inside executeDynamicTask to strip markdown fences, stray C++ #include/#define lines, and HTML tags before execution — preventing 'Unexpected token' parse errors that were bypassing self-healing.
 -->
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v8.10.2</title>
+  <title>MIGO Robot Controller v7.2.0 (Super AIONA)</title>
 
   <!-- PWA Manifest & Theme -->
   <link rel="manifest" href="./manifest.json">
@@ -38,10 +38,14 @@
   <!-- Google Fonts: Outfit -->
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
   <!-- Blockly (Local with CDN fallback for offline PWA support) -->
-  <script src="./lib/blockly/blockly_compressed.js" onerror="this.onerror=null;this.src='https://unpkg.com/blockly/blockly_compressed.js';"></script>
-  <script src="./lib/blockly/blocks_compressed.js" onerror="this.onerror=null;this.src='https://unpkg.com/blockly/blocks_compressed.js';"></script>
-  <script src="./lib/blockly/javascript_compressed.js" onerror="this.onerror=null;this.src='https://unpkg.com/blockly/javascript_compressed.js';"></script>
-  <script src="./lib/blockly/msg/en.js" onerror="this.onerror=null;this.src='https://unpkg.com/blockly/msg/en.js';"></script>
+  <script src="./lib/blockly/blockly_compressed.js"
+    onerror="this.onerror=null;this.src='https://unpkg.com/blockly/blockly_compressed.js';"></script>
+  <script src="./lib/blockly/blocks_compressed.js"
+    onerror="this.onerror=null;this.src='https://unpkg.com/blockly/blocks_compressed.js';"></script>
+  <script src="./lib/blockly/javascript_compressed.js"
+    onerror="this.onerror=null;this.src='https://unpkg.com/blockly/javascript_compressed.js';"></script>
+  <script src="./lib/blockly/msg/en.js"
+    onerror="this.onerror=null;this.src='https://unpkg.com/blockly/msg/en.js';"></script>
   <!-- Phosphor Icons -->
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
@@ -372,23 +376,26 @@
       box-shadow: none;
       cursor: not-allowed;
     }
+
     /* Obstacle Guard Toggle Switch */
     .obs-toggle-track {
       width: 32px;
       height: 17px;
-      background: rgba(255,255,255,0.15);
+      background: rgba(255, 255, 255, 0.15);
       border-radius: 9999px;
-      border: 1px solid rgba(255,255,255,0.2);
+      border: 1px solid rgba(255, 255, 255, 0.2);
       transition: background 0.25s, border-color 0.25s;
       position: relative;
       cursor: pointer;
       flex-shrink: 0;
     }
+
     .obs-toggle-track.on {
       background: linear-gradient(90deg, #14b8a6, #10b981);
       border-color: #14b8a6;
-      box-shadow: 0 0 8px rgba(20,184,166,0.55);
+      box-shadow: 0 0 8px rgba(20, 184, 166, 0.55);
     }
+
     .obs-toggle-knob {
       position: absolute;
       top: 2px;
@@ -397,12 +404,13 @@
       height: 11px;
       background: white;
       border-radius: 50%;
-      transition: transform 0.25s cubic-bezier(.4,0,.2,1), box-shadow 0.2s;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+      transition: transform 0.25s cubic-bezier(.4, 0, .2, 1), box-shadow 0.2s;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
     }
+
     .obs-toggle-track.on .obs-toggle-knob {
       transform: translateX(15px);
-      box-shadow: 0 0 6px rgba(20,184,166,0.7);
+      box-shadow: 0 0 6px rgba(20, 184, 166, 0.7);
     }
   </style>
 </head>
@@ -539,12 +547,14 @@
                 <div class="flex justify-between items-center mb-1.5">
                   <label class="text-xs font-semibold text-white/80">Max Motor Speed</label>
                   <span id="maxSpeedDisplay"
-                    class="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">200 / 255</span>
+                    class="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">200
+                    / 255</span>
                 </div>
                 <input type="range" id="maxSpeedSlider" min="50" max="255" value="200" step="5"
                   oninput="updateMaxSpeed(this.value)"
                   class="w-full h-2 rounded-full appearance-none cursor-pointer bg-slate-700 accent-amber-400">
-                <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Limits PWM power to prevent voltage sag / power-dip cutoffs on battery.</p>
+                <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Limits PWM power to prevent voltage sag /
+                  power-dip cutoffs on battery.</p>
               </div>
 
               <!-- Obstacle threshold -->
@@ -552,12 +562,14 @@
                 <div class="flex justify-between items-center mb-1.5">
                   <label class="text-xs font-semibold text-white/80">AIONA Obstacle Stop Distance</label>
                   <span id="obstacleThreshDisplay"
-                    class="text-xs font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-lg border border-red-500/20">15 cm</span>
+                    class="text-xs font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-lg border border-red-500/20">15
+                    cm</span>
                 </div>
                 <input type="range" id="obstacleThreshSlider" min="5" max="50" value="15" step="1"
                   oninput="updateObstacleThresh(this.value)"
                   class="w-full h-2 rounded-full appearance-none cursor-pointer bg-slate-700 accent-red-400">
-                <p class="text-[9px] text-white/40 mt-1.5 leading-normal">AIONA will stop movement and alert when an obstacle is detected within this range.</p>
+                <p class="text-[9px] text-white/40 mt-1.5 leading-normal">AIONA will stop movement and alert when an
+                  obstacle is detected within this range.</p>
               </div>
 
               <!-- Obstacle Guard Toggle -->
@@ -567,14 +579,16 @@
                     <i class="ph-bold ph-shield-warning text-amber-400 text-xs"></i>
                     Obstacle Guard
                   </p>
-                  <p class="text-[9px] text-white/40 mt-0.5 leading-normal">Block forward movement when obstacle is in range.</p>
+                  <p class="text-[9px] text-white/40 mt-0.5 leading-normal">Block forward movement when obstacle is in
+                    range.</p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0 ml-3">
                   <span id="settingsObstacleGuardLabel" class="text-[8px] text-white/40 font-bold uppercase">Off</span>
                   <button id="settingsObstacleGuardToggle" onclick="toggleObstacleGuard()"
                     class="w-10 h-6 bg-slate-700 rounded-full p-0.5 transition-all relative flex items-center cursor-pointer"
                     title="Toggle obstacle guard">
-                    <span id="settingsObstacleGuardKnob" class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
+                    <span id="settingsObstacleGuardKnob"
+                      class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
                   </button>
                 </div>
               </div>
@@ -611,16 +625,12 @@
                   <span id="dpadLRLabel" class="text-[8px] text-white/40 font-bold uppercase">Off</span>
                   <button id="dpadLRToggle" onclick="toggleSetting('dpadInvertLR')"
                     class="w-10 h-6 bg-slate-700 rounded-full p-0.5 transition-all relative flex items-center cursor-pointer">
-                    <span class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
                   </button>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- ─── COLUMN 2: Joystick Inversion, Block Code Inversion, BLE Name ─── -->
-        <div class="space-y-5">
           <!-- Joystick Direction Inversion -->
           <div>
             <p class="text-[10px] text-purple-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
@@ -694,7 +704,10 @@
               </div>
             </div>
           </div>
+        </div>
 
+        <!-- ─── COLUMN 2: Power & Screen Sleep ─── -->
+        <div class="space-y-5">
           <!-- Power & Screen Sleep Settings -->
           <div>
             <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
@@ -712,7 +725,8 @@
                   <button id="landingIdleAnimToggle" onclick="toggleSetting('landingIdleAnim')"
                     class="w-10 h-6 bg-teal-500 rounded-full p-0.5 transition-all relative flex items-center cursor-pointer"
                     title="Toggle Landing Page Animations">
-                    <span id="landingIdleAnimKnob" class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
+                    <span id="landingIdleAnimKnob"
+                      class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
                   </button>
                 </div>
               </div>
@@ -728,7 +742,8 @@
                   <button id="simulatedSleepToggle" onclick="toggleSetting('simulatedSleepEnabled')"
                     class="w-10 h-6 bg-teal-500 rounded-full p-0.5 transition-all relative flex items-center cursor-pointer"
                     title="Toggle Simulated Sleep Mode">
-                    <span id="simulatedSleepKnob" class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
+                    <span id="simulatedSleepKnob"
+                      class="w-5 h-5 bg-white rounded-full transition-all shadow-sm absolute left-0.5"></span>
                   </button>
                 </div>
               </div>
@@ -738,12 +753,29 @@
                 <div class="flex justify-between items-center mb-1.5">
                   <label class="text-xs font-semibold text-white/80">Idle Sleep Timeout</label>
                   <span id="sleepTimeoutDisplay"
-                    class="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">5 min</span>
+                    class="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">5
+                    min</span>
                 </div>
                 <input type="range" id="sleepTimeoutSlider" min="1" max="30" value="5" step="1"
                   oninput="updateSleepTimeout(this.value)"
                   class="w-full h-2 rounded-full appearance-none cursor-pointer bg-slate-700 accent-emerald-400">
-                <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Minutes of inactivity before 10s countdown and black overlay activate.</p>
+                <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Minutes of inactivity before 10s countdown and
+                  black overlay activate.</p>
+              </div>
+
+              <!-- AI Code Timeout Slider -->
+              <div class="border-t border-white/5 pt-3 transition-all duration-200">
+                <div class="flex justify-between items-center mb-1.5">
+                  <label class="text-xs font-semibold text-white/80">AI Code Task Timeout</label>
+                  <span id="aiCodeTimeoutDisplay"
+                    class="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">60
+                    min</span>
+                </div>
+                <input type="range" id="aiCodeTimeoutSlider" min="1" max="120" value="60" step="1"
+                  oninput="updateAiCodeTimeout(this.value)"
+                  class="w-full h-2 rounded-full appearance-none cursor-pointer bg-slate-700 accent-amber-400">
+                <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Minutes before a background AI Code task
+                  forcefully aborts itself.</p>
               </div>
             </div>
           </div>
@@ -768,8 +800,10 @@
                     <i class="ph-bold ph-floppy-disk"></i> Update BLE Name
                   </button>
                 </div>
-                <div id="bleNameFeedback" class="hidden mt-2 text-[10px] px-3 py-1.5 rounded-lg border font-semibold"></div>
-                <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Updates robot's Bluetooth name (prefix "MIGO_" added automatically). Robot saves and restarts in 0.5s.</p>
+                <div id="bleNameFeedback" class="hidden mt-2 text-[10px] px-3 py-1.5 rounded-lg border font-semibold">
+                </div>
+                <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Updates robot's Bluetooth name (prefix "MIGO_"
+                  added automatically). Robot saves and restarts in 0.5s.</p>
               </div>
             </div>
           </div>
@@ -789,11 +823,12 @@
                   <span class="text-[10px] uppercase tracking-wider font-bold text-white/50 flex items-center gap-1">
                     <i class="ph-bold ph-shield-check text-indigo-400"></i> Firmware Version Status
                   </span>
-                  <span id="otaVersionComparisonBadge" class="text-[9px] px-2 py-0.5 rounded-full font-bold bg-slate-800 text-white/50 border border-white/10">
+                  <span id="otaVersionComparisonBadge"
+                    class="text-[9px] px-2 py-0.5 rounded-full font-bold bg-slate-800 text-white/50 border border-white/10">
                     Not Checked
                   </span>
                 </div>
-                
+
                 <div class="grid grid-cols-2 gap-2 text-xs">
                   <div class="bg-black/40 p-2.5 rounded-lg border border-white/5">
                     <p class="text-[9px] text-white/40 font-semibold mb-0.5 flex items-center gap-1">
@@ -821,9 +856,11 @@
               </div>
 
               <div>
-                <label class="text-xs font-semibold text-white/80 mb-1.5 block">Firmware (.bin) GitHub or Google Drive Link</label>
+                <label class="text-xs font-semibold text-white/80 mb-1.5 block">Firmware (.bin) GitHub or Google Drive
+                  Link</label>
                 <div class="flex flex-col gap-2">
-                  <input type="text" id="otaDriveLinkInput" placeholder="Leave empty for official firmware, or paste custom link..."
+                  <input type="text" id="otaDriveLinkInput"
+                    placeholder="Leave empty for official firmware, or paste custom link..."
                     class="w-full px-3 py-2 text-sm rounded-xl bg-slate-800 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-medium">
                   <button id="startOtaBtn" onclick="startOtaUpdateFromGoogleDrive()"
                     class="w-full py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 rounded-xl font-bold text-xs text-white shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer">
@@ -837,7 +874,8 @@
                   <span id="otaLastFlashedText"></span>
                 </div>
 
-                <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Default uses official embedded firmware link. Paste a custom GitHub raw or Google Drive link for non-standard builds.</p>
+                <p class="text-[9px] text-white/40 mt-1.5 leading-normal">Default uses official embedded firmware link.
+                  Paste a custom GitHub raw or Google Drive link for non-standard builds.</p>
 
                 <!-- Same-firmware warning panel -->
                 <div id="otaSameFirmwareWarning"
@@ -865,11 +903,14 @@
                 <div id="otaProgressContainer" class="hidden mt-3 pt-3 border-t border-white/10">
                   <div id="otaProgressActive">
                     <div class="flex justify-between items-center mb-1">
-                      <span id="otaStatusText" class="text-[10px] font-semibold text-indigo-300">Preparing OTA update...</span>
+                      <span id="otaStatusText" class="text-[10px] font-semibold text-indigo-300">Preparing OTA
+                        update...</span>
                       <span id="otaProgressPercent" class="text-[10px] font-bold text-indigo-400">0%</span>
                     </div>
                     <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-white/10">
-                      <div id="otaProgressBar" class="bg-gradient-to-r from-indigo-500 to-teal-400 h-full w-0 transition-all duration-150"></div>
+                      <div id="otaProgressBar"
+                        class="bg-gradient-to-r from-indigo-500 to-teal-400 h-full w-0 transition-all duration-150">
+                      </div>
                     </div>
                   </div>
                   <div id="otaCompleteMsg" class="hidden">
@@ -877,25 +918,30 @@
                       <i class="ph-bold ph-check-circle text-teal-300 text-xl shrink-0"></i>
                       <div>
                         <p class="text-[11px] font-bold text-teal-200">Firmware Flashed Successfully!</p>
-                        <p class="text-[9px] text-teal-300/70 mt-0.5">MIGO is restarting… You can reconnect in a few seconds.</p>
+                        <p class="text-[9px] text-teal-300/70 mt-0.5">MIGO is restarting… You can reconnect in a few
+                          seconds.</p>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 <!-- CORS error help panel -->
-                <div id="otaCorsErrorPanel" class="hidden mt-3 p-3 rounded-xl border border-red-500/40 bg-red-500/10 space-y-2">
+                <div id="otaCorsErrorPanel"
+                  class="hidden mt-3 p-3 rounded-xl border border-red-500/40 bg-red-500/10 space-y-2">
                   <div class="flex items-start gap-2">
                     <i class="ph-bold ph-prohibit text-red-400 text-sm mt-0.5 shrink-0"></i>
                     <div class="min-w-0">
                       <p class="text-[10px] font-bold text-red-300">Browser blocked the download (CORS)</p>
-                      <p class="text-[9px] text-white/60 mt-0.5 leading-normal">Google Drive and GitHub Release downloads block web apps from fetching binary files across origins.</p>
+                      <p class="text-[9px] text-white/60 mt-0.5 leading-normal">Google Drive and GitHub Release
+                        downloads block web apps from fetching binary files across origins.</p>
                     </div>
                   </div>
                   <div class="border-t border-white/10 pt-2 space-y-1">
                     <p class="text-[9px] font-bold text-white/70">How to get a working CORS link on GitHub:</p>
-                    <p class="text-[9px] text-white/50 leading-normal">① Upload/commit your <span class="font-mono text-white/70">.bin</span> file directly into your GitHub repository.</p>
-                    <p class="text-[9px] text-white/50 leading-normal">② Copy the <span class="font-bold text-white/70">Raw</span> button URL — this URL has full CORS enabled!</p>
+                    <p class="text-[9px] text-white/50 leading-normal">① Upload/commit your <span
+                        class="font-mono text-white/70">.bin</span> file directly into your GitHub repository.</p>
+                    <p class="text-[9px] text-white/50 leading-normal">② Copy the <span
+                        class="font-bold text-white/70">Raw</span> button URL — this URL has full CORS enabled!</p>
                   </div>
                   <button onclick="document.getElementById('otaCorsErrorPanel').classList.add('hidden')"
                     class="w-full py-1 bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 font-bold text-[9px] rounded-lg active:scale-95 transition-all cursor-pointer">
@@ -916,7 +962,8 @@
                 <div class="flex justify-between items-center mb-1.5">
                   <label class="text-xs font-semibold text-white/80">Gemini API Key</label>
                   <span id="settingsApiKeyStatus"
-                    class="text-[9px] font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-lg border border-red-500/20">Not Set</span>
+                    class="text-[9px] font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-lg border border-red-500/20">Not
+                    Set</span>
                 </div>
 
                 <div class="flex flex-col gap-2">
@@ -962,13 +1009,16 @@
   <!-- SCREEN SLEEP COUNTDOWN WARNING MODAL -->
   <div id="screenSleepWarningModal"
     class="hidden fixed inset-0 z-[9990] flex flex-col items-center justify-center bg-black/85 backdrop-blur-md p-4 transition-all duration-300">
-    <div class="glass-panel bg-slate-900/95 border-amber-500/80 border-2 p-6 max-w-sm w-full text-center text-teal-50 shadow-2xl rounded-2xl flex flex-col items-center">
-      <div class="w-14 h-14 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-400 flex items-center justify-center text-2xl mb-3 animate-pulse">
+    <div
+      class="glass-panel bg-slate-900/95 border-amber-500/80 border-2 p-6 max-w-sm w-full text-center text-teal-50 shadow-2xl rounded-2xl flex flex-col items-center">
+      <div
+        class="w-14 h-14 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-400 flex items-center justify-center text-2xl mb-3 animate-pulse">
         <i class="ph-bold ph-moon-stars"></i>
       </div>
       <h3 class="text-xl font-bold text-amber-300 mb-1">Inactivity Sleep Notice</h3>
       <p id="sleepCountdownText" class="text-sm font-semibold text-white/90 mb-4">
-        Screen sleeping in <span id="sleepCountdownNum" class="text-amber-400 font-bold text-lg font-mono">10</span> seconds...
+        Screen sleeping in <span id="sleepCountdownNum" class="text-amber-400 font-bold text-lg font-mono">10</span>
+        seconds...
       </p>
       <p class="text-[10px] text-white/50 mb-5 leading-normal">
         Your robot and background connections will stay active while the screen dims to black to save battery.
@@ -1103,12 +1153,14 @@
                   (returns 0 or 1).</li>
                 <li><b>Read Digital on Pin [Pin] (read_digital_custom):</b> Low-level digital read from any custom GPIO
                   pin (0-39) on the ESP32.</li>
-                <li><b>Read Digital on Pin [Variable] (read_digital_var):</b> Read digital value using a declared variable for the pin.</li>
+                <li><b>Read Digital on Pin [Variable] (read_digital_var):</b> Read digital value using a declared
+                  variable for the pin.</li>
                 <li><b>Read Analog Value on [Plug] (read_analog):</b> Low-level raw analog read from Plug A, B, or C
                   (returns 0 to 4095).</li>
                 <li><b>Read Analog on Pin [Pin] (read_analog_custom):</b> Low-level raw analog read from any custom ADC
                   pin (0-39) on the ESP32.</li>
-                <li><b>Read Analog on Pin [Variable] (read_analog_var):</b> Read analog value using a declared variable for the pin.</li>
+                <li><b>Read Analog on Pin [Variable] (read_analog_var):</b> Read analog value using a declared variable
+                  for the pin.</li>
               </ul>
             </div>
 
@@ -1121,17 +1173,20 @@
                   Output (write).</li>
                 <li><b>Set Custom Pin [Pin] to [Mode] (setup_pin_custom):</b> Configures a custom GPIO pin (0-39) as
                   Input or Output mode.</li>
-                <li><b>Set Pin [Variable] to [Mode] (setup_pin_var):</b> Configures pin mode using a declared variable for the pin.</li>
+                <li><b>Set Pin [Variable] to [Mode] (setup_pin_var):</b> Configures pin mode using a declared variable
+                  for the pin.</li>
                 <li><b>Write Digital [ON/OFF] to [Plug] (digital_write):</b> Outputs High (ON) or Low (OFF) voltage to
                   Plug D or C.</li>
                 <li><b>Write Digital [ON/OFF] to Pin [Pin] (digital_write_custom):</b> Outputs High or Low voltage to a
                   custom GPIO pin (0-39).</li>
-                <li><b>Write Digital [ON/OFF] to Pin [Variable] (digital_write_var):</b> Outputs High or Low voltage using a declared variable for the pin.</li>
+                <li><b>Write Digital [ON/OFF] to Pin [Variable] (digital_write_var):</b> Outputs High or Low voltage
+                  using a declared variable for the pin.</li>
                 <li><b>Write Analog [Power] to [Plug] (analog_write):</b> Outputs variable power (PWM 0 to 255) to Plug
                   D or C.</li>
                 <li><b>Write Analog [Power] to Pin [Pin] (analog_write_custom):</b> Outputs variable power (PWM 0 to
                   255) to a custom GPIO pin (0-39).</li>
-                <li><b>Write Analog power to Pin [Variable] (analog_write_var):</b> Outputs PWM power using a declared variable for the pin.</li>
+                <li><b>Write Analog power to Pin [Variable] (analog_write_var):</b> Outputs PWM power using a declared
+                  variable for the pin.</li>
                 <li><b>Turn Built-in LED [ON/OFF] (control_led):</b> Controls the blue onboard status LED (GPIO Pin 2).
                   [Inventor Mode]</li>
                 <li><b>Turn Light [ON/OFF] (control_led_explorer):</b> Controls the built-in status light. [Explorer
@@ -1551,6 +1606,103 @@
 
     </div>
   </div>
+
+  <!-- AI CODE DYNAMIC TASK & CODE TERMINAL MODAL -->
+  <div id="superAionaModal"
+    class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+    <div
+      class="bg-slate-950 border border-amber-500/40 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-[0_0_50px_rgba(245,158,11,0.25)]">
+
+      <!-- Modal Header -->
+      <div
+        class="p-4 bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 border-b border-amber-500/30 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center">
+            <i class="ph-bold ph-terminal-window text-amber-400 text-lg animate-pulse"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-amber-300 flex items-center gap-2">
+              AI Code Engine
+              <span id="superAionaStatusBadge"
+                class="text-[9px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/40 uppercase tracking-widest font-mono">IDLE</span>
+            </h3>
+            <p class="text-[10px] text-white/60">Dynamic transient JavaScript task runner & hardware sandbox</p>
+          </div>
+        </div>
+        <button onclick="closeSuperAionaModal()"
+          class="text-white/60 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10">
+          <i class="ph-bold ph-x text-base"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-4 overflow-y-auto space-y-4 flex-grow font-mono text-xs">
+
+        <!-- Live Code Editor & Terminal -->
+        <div class="bg-slate-900/90 rounded-xl border border-amber-500/20 overflow-hidden">
+          <div class="flex items-center justify-between px-3 py-2 bg-black/30 border-b border-amber-500/15">
+            <div class="flex items-center gap-2 text-[10px] font-bold text-amber-400/80 uppercase tracking-wider">
+              <i class="ph-bold ph-code text-amber-400"></i> Live Code Viewer
+            </div>
+            <span id="superTaskTimer" class="text-[9px] font-mono text-white/40"></span>
+          </div>
+          <textarea id="superAionaCodeDisplay"
+            class="w-full h-28 bg-transparent font-mono text-[10px] text-emerald-300 p-3 resize-none outline-none leading-relaxed custom-scrollbar"
+            spellcheck="false" readonly
+            placeholder="// C++ representation of executed robot code will appear here..."></textarea>
+        </div>
+
+        <!-- Terminal Output Log -->
+        <div class="bg-slate-900/90 rounded-xl border border-white/10 p-3 space-y-1">
+          <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex justify-between">
+            Execution Console Logs
+            <span class="text-[9px] text-slate-400 cursor-pointer hover:text-white transition-colors"
+              onclick="clearSuperAionaLogs()">clear logs</span>
+          </div>
+          <div id="superAionaLogDisplay"
+            class="font-mono text-[10px] leading-relaxed text-slate-300 h-40 overflow-y-auto break-all custom-scrollbar space-y-1">
+            <div class="text-white/40 italic">&gt; AI Code Sandbox initialized. Ready for dynamic tasks.</div>
+          </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="bg-black/20 p-3 rounded-xl border border-white/5 space-y-2">
+          <div class="text-[10px] font-bold uppercase tracking-wider text-amber-400/80">How to use AI Code Engine</div>
+          <div class="text-[10px] text-white/60 leading-relaxed space-y-1">
+            <p>1. Type a natural language command in the chat (e.g., "MIGO, sweep the ultrasonic sensor").</p>
+            <p>2. AIONA will instantly generate the JavaScript and execute it in the background.</p>
+            <p>3. You can monitor the live execution logs above or write your own custom scripts in the editor.</p>
+            <p>4. Use the <strong class="text-amber-400">HALT AI CODE</strong> button below or in the header to
+              instantly stop running tasks.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="p-3 bg-slate-900 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <label class="flex items-center gap-1.5 text-[10px] text-white/70 cursor-pointer">
+            <input type="checkbox" id="autoRunSuperCodeCheck" checked
+              class="rounded border-white/20 text-amber-500 focus:ring-amber-500 bg-slate-800">
+            <span>Auto-Run AI Generated Code</span>
+          </label>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="superAionaAbortBtn" onclick="abortSuperAionaTask('User Manual Abort')"
+            class="py-1.5 px-3 bg-slate-700/50 text-slate-500 font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 border border-slate-600/30 cursor-not-allowed"
+            disabled>
+            <i class="ph-bold ph-hand-palm"></i> HALT AI CODE
+          </button>
+          <button id="superAionaRunBtn" onclick="runCurrentSuperAionaCode()"
+            class="py-1.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-xl text-xs transition-all flex items-center gap-1.5">
+            <i class="ph-bold ph-play"></i> Run Code
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
 
   <!-- MAIN APP -->
   <div id="mainApp"
@@ -2077,6 +2229,17 @@
           <i class="ph-bold ph-scan text-xs"></i>
           <span id="aionaSensorDist">-- cm</span>
         </div>
+        <button onclick="openSuperAionaModal()" id="headerSuperAionaBtn"
+          class="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 py-1.5 px-2.5 md:px-3 text-xs font-bold rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-1.5 relative"
+          title="AI Code Dynamic Engine">
+          <i class="ph-bold ph-terminal-window text-sm text-amber-400"></i> <span class="hidden md:inline">AI
+            Code</span>
+        </button>
+        <button id="headerKillBtn" onclick="masterKillAllAionaTasks('Header Emergency Stop')"
+          class="bg-slate-700/50 text-slate-500 py-1.5 px-2.5 md:px-3 text-xs font-bold flex items-center justify-center gap-1.5 rounded-xl transition-all border border-slate-600/30 opacity-70 cursor-not-allowed"
+          title="No active tasks to stop" disabled>
+          <i class="ph-bold ph-hand-palm text-sm"></i> <span>HALT</span>
+        </button>
         <button onclick="openAionaMemoryBank()"
           class="glass-panel py-1.5 px-2.5 md:px-3 text-xs font-bold flex items-center justify-center gap-1 hover:bg-white/20 transition-all active:scale-95"
           title="AIONA Memory Bank">
@@ -2103,82 +2266,83 @@
         <!-- Mobile: Status & Companion Commands row -->
         <div class="grid grid-cols-2 md:contents gap-2">
 
-        <!-- Cognitive State & Orb Panel -->
-        <div
-          class="glass-panel p-3 md:p-5 flex flex-col items-center justify-center relative overflow-hidden flex-initial min-h-[140px]">
+          <!-- Cognitive State & Orb Panel -->
+          <div
+            class="glass-panel p-3 md:p-5 flex flex-col items-center justify-center relative overflow-hidden flex-initial min-h-[140px]">
 
-          <!-- Outer decorative rotating rings -->
-          <div class="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
-            <div
-              class="w-24 h-24 md:w-36 md:h-36 rounded-full border border-dashed border-teal-300 animate-[spin_20s_linear_infinite]">
+            <!-- Outer decorative rotating rings -->
+            <div class="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
+              <div
+                class="w-24 h-24 md:w-36 md:h-36 rounded-full border border-dashed border-teal-300 animate-[spin_20s_linear_infinite]">
+              </div>
+              <div
+                class="w-18 h-18 md:w-28 md:h-28 rounded-full border border-dotted border-amber-300 absolute animate-[spin_12s_linear_infinite_reverse]">
+              </div>
             </div>
-            <div
-              class="w-18 h-18 md:w-28 md:h-28 rounded-full border border-dotted border-amber-300 absolute animate-[spin_12s_linear_infinite_reverse]">
+
+            <!-- Pulsing Cognitive Orb -->
+            <div id="aionaOrbContainer"
+              class="relative w-16 h-16 md:w-20 md:h-20 flex items-center justify-center mb-1.5 md:mb-3">
+              <div id="aionaOrbGlow"
+                class="absolute inset-0 rounded-full bg-teal-400/20 blur-xl transition-all duration-700 scale-110">
+              </div>
+              <div id="aionaOrbCore"
+                class="w-12 h-12 md:w-16 md:h-16 rounded-full bg-gradient-to-tr from-teal-500 to-emerald-400 border border-white/20 shadow-[0_0_20px_rgba(20,184,166,0.6)] flex items-center justify-center transition-all duration-500 scale-100 relative">
+                <!-- Subtle inner detailing -->
+                <div
+                  class="w-9 h-9 md:w-12 md:h-12 rounded-full border border-white/10 absolute bg-white/5 flex items-center justify-center">
+                  <i id="aionaOrbIcon" class="ph-fill ph-robot text-lg md:text-2xl text-white drop-shadow"></i>
+                </div>
+              </div>
+            </div>
+
+            <!-- AIONA Mode Status -->
+            <div class="text-center z-10">
+              <h2 id="aionaStatusText" class="text-sm font-bold text-teal-200">Sleeping</h2>
+              <p id="aionaStatusSubtext" class="text-[10px] text-white/50 mt-0.5 max-w-[240px]">Say <strong
+                  class="text-amber-400">"Aiona"</strong> to wake me up!</p>
             </div>
           </div>
 
-          <!-- Pulsing Cognitive Orb -->
-          <div id="aionaOrbContainer"
-            class="relative w-16 h-16 md:w-20 md:h-20 flex items-center justify-center mb-1.5 md:mb-3">
-            <div id="aionaOrbGlow"
-              class="absolute inset-0 rounded-full bg-teal-400/20 blur-xl transition-all duration-700 scale-110"></div>
-            <div id="aionaOrbCore"
-              class="w-12 h-12 md:w-16 md:h-16 rounded-full bg-gradient-to-tr from-teal-500 to-emerald-400 border border-white/20 shadow-[0_0_20px_rgba(20,184,166,0.6)] flex items-center justify-center transition-all duration-500 scale-100 relative">
-              <!-- Subtle inner detailing -->
-              <div
-                class="w-9 h-9 md:w-12 md:h-12 rounded-full border border-white/10 absolute bg-white/5 flex items-center justify-center">
-                <i id="aionaOrbIcon" class="ph-fill ph-robot text-lg md:text-2xl text-white drop-shadow"></i>
+          <!-- Quick Manual Action Board -->
+          <div class="glass-panel p-3 flex flex-col gap-2.5 flex-initial md:col-auto">
+            <h3 class="text-[10px] font-bold text-teal-300 uppercase tracking-widest flex items-center gap-1.5"><i
+                class="ph-bold ph-sparkle text-xs animate-spin" style="animation-duration: 4s;"></i> Companion Commands
+            </h3>
+
+            <!-- Face overrides -->
+            <div>
+              <p class="text-[8px] text-white/40 font-bold uppercase tracking-wider mb-1">Manual Face Expressions</p>
+              <div class="grid grid-cols-5 gap-1.5">
+                <button onclick="aionaSendFace('SMILE')"
+                  class="bg-black/35 hover:bg-black/50 border border-white/10 text-white font-bold py-1 px-0.5 rounded-lg text-[8px] transition-all active:scale-95">Smile</button>
+                <button onclick="aionaSendFace('GRIN')"
+                  class="bg-black/35 hover:bg-black/50 border border-white/10 text-white font-bold py-1 px-0.5 rounded-lg text-[8px] transition-all active:scale-95">Grin</button>
+                <button onclick="aionaSendFace('SMIRK')"
+                  class="bg-black/35 hover:bg-black/50 border border-white/10 text-white font-bold py-1 px-0.5 rounded-lg text-[8px] transition-all active:scale-95">Smirk</button>
+                <button onclick="aionaSendFace('TALK')"
+                  class="bg-black/35 hover:bg-black/50 border border-white/10 text-white font-bold py-1 px-0.5 rounded-lg text-[8px] transition-all active:scale-95">Talk</button>
+                <button onclick="aionaSendFace('IDLE')"
+                  class="bg-black/35 hover:bg-black/50 border border-white/10 text-white font-bold py-1 px-0.5 rounded-lg text-[8px] transition-all active:scale-95">Auto</button>
+              </div>
+            </div>
+
+            <!-- Movement overrides -->
+            <div>
+              <p class="text-[8px] text-white/40 font-bold uppercase tracking-wider mb-1">Manual Companion Actions</p>
+              <div class="grid grid-cols-3 gap-1.5">
+                <button onclick="aionaDoAction('wiggle')"
+                  class="bg-teal-600/30 hover:bg-teal-600/50 border border-teal-500/20 text-teal-300 font-bold py-1 px-0.5 rounded-lg text-[9px] transition-all active:scale-95 flex items-center justify-center gap-0.5"><i
+                    class="ph ph-waveform text-xs"></i> Wiggle</button>
+                <button onclick="aionaDoAction('dance')"
+                  class="bg-amber-600/30 hover:bg-amber-600/50 border border-amber-500/20 text-amber-300 font-bold py-1 px-0.5 rounded-lg text-[9px] transition-all active:scale-95 flex items-center justify-center gap-0.5"><i
+                    class="ph ph-wind text-xs"></i> Dance</button>
+                <button onclick="aionaDoAction('nod')"
+                  class="bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/20 text-purple-300 font-bold py-1 px-0.5 rounded-lg text-[9px] transition-all active:scale-95 flex items-center justify-center gap-0.5"><i
+                    class="ph ph-arrows-down-up text-xs"></i> Sway</button>
               </div>
             </div>
           </div>
-
-          <!-- AIONA Mode Status -->
-          <div class="text-center z-10">
-            <h2 id="aionaStatusText" class="text-sm font-bold text-teal-200">Sleeping</h2>
-            <p id="aionaStatusSubtext" class="text-[10px] text-white/50 mt-0.5 max-w-[240px]">Say <strong
-                class="text-amber-400">"Aiona"</strong> to wake me up!</p>
-          </div>
-        </div>
-
-        <!-- Quick Manual Action Board -->
-        <div class="glass-panel p-3 flex flex-col gap-2.5 flex-initial md:col-auto">
-          <h3 class="text-[10px] font-bold text-teal-300 uppercase tracking-widest flex items-center gap-1.5"><i
-              class="ph-bold ph-sparkle text-xs animate-spin" style="animation-duration: 4s;"></i> Companion Commands
-          </h3>
-
-          <!-- Face overrides -->
-          <div>
-            <p class="text-[8px] text-white/40 font-bold uppercase tracking-wider mb-1">Manual Face Expressions</p>
-            <div class="grid grid-cols-5 gap-1.5">
-              <button onclick="aionaSendFace('SMILE')"
-                class="bg-black/35 hover:bg-black/50 border border-white/10 text-white font-bold py-1 px-0.5 rounded-lg text-[8px] transition-all active:scale-95">Smile</button>
-              <button onclick="aionaSendFace('GRIN')"
-                class="bg-black/35 hover:bg-black/50 border border-white/10 text-white font-bold py-1 px-0.5 rounded-lg text-[8px] transition-all active:scale-95">Grin</button>
-              <button onclick="aionaSendFace('SMIRK')"
-                class="bg-black/35 hover:bg-black/50 border border-white/10 text-white font-bold py-1 px-0.5 rounded-lg text-[8px] transition-all active:scale-95">Smirk</button>
-              <button onclick="aionaSendFace('TALK')"
-                class="bg-black/35 hover:bg-black/50 border border-white/10 text-white font-bold py-1 px-0.5 rounded-lg text-[8px] transition-all active:scale-95">Talk</button>
-              <button onclick="aionaSendFace('IDLE')"
-                class="bg-black/35 hover:bg-black/50 border border-white/10 text-white font-bold py-1 px-0.5 rounded-lg text-[8px] transition-all active:scale-95">Auto</button>
-            </div>
-          </div>
-
-          <!-- Movement overrides -->
-          <div>
-            <p class="text-[8px] text-white/40 font-bold uppercase tracking-wider mb-1">Manual Companion Actions</p>
-            <div class="grid grid-cols-3 gap-1.5">
-              <button onclick="aionaDoAction('wiggle')"
-                class="bg-teal-600/30 hover:bg-teal-600/50 border border-teal-500/20 text-teal-300 font-bold py-1 px-0.5 rounded-lg text-[9px] transition-all active:scale-95 flex items-center justify-center gap-0.5"><i
-                  class="ph ph-waveform text-xs"></i> Wiggle</button>
-              <button onclick="aionaDoAction('dance')"
-                class="bg-amber-600/30 hover:bg-amber-600/50 border border-amber-500/20 text-amber-300 font-bold py-1 px-0.5 rounded-lg text-[9px] transition-all active:scale-95 flex items-center justify-center gap-0.5"><i
-                  class="ph ph-wind text-xs"></i> Dance</button>
-              <button onclick="aionaDoAction('nod')"
-                class="bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/20 text-purple-300 font-bold py-1 px-0.5 rounded-lg text-[9px] transition-all active:scale-95 flex items-center justify-center gap-0.5"><i
-                  class="ph ph-arrows-down-up text-xs"></i> Sway</button>
-            </div>
-          </div>
-        </div>
 
         </div><!-- end mobile side-by-side row -->
 
@@ -2310,7 +2474,7 @@
     const charReadUuid = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
 
     const otaServiceUuid = "6e400010-b5a3-f393-e0a9-e50e24dcca9e";
-    const otaCharUuid    = "6e400011-b5a3-f393-e0a9-e50e24dcca9e";
+    const otaCharUuid = "6e400011-b5a3-f393-e0a9-e50e24dcca9e";
 
     let connectedVersionVal = "v3";
     Object.defineProperty(window, 'connectedVersion', {
@@ -2422,7 +2586,7 @@
 
     function startApp() {
       if (selectedTier === 0) return;
-      const rawName = document.getElementById('robotNameInput').value.trim() || 'MIGO Bot';
+      const rawName = document.getElementById('robotNameInput')?.value?.trim() || 'MIGO Bot';
       let name = rawName.replace(/^MIGO_/i, '');
       if (name.length > 10) name = name.substring(0, 10);
       localStorage.setItem('migoRobotName', name);
@@ -2436,45 +2600,54 @@
       if (selectedTier === 1) {
         // Explorer
         document.body.style.background = "linear-gradient(135deg, #14b8a6 0%, #0f766e 50%, #f59e0b 100%)";
-        workspace.updateToolbox(getTier1Toolbox());
+        if (typeof workspace !== 'undefined' && workspace && typeof workspace.updateToolbox === 'function' && typeof getTier1Toolbox === 'function') {
+          try { workspace.updateToolbox(getTier1Toolbox()); } catch (e) { console.warn('Workspace toolbox update deferred:', e); }
+        }
         if (filterBar) filterBar.style.display = 'none';
         if (hudToggle) hudToggle.classList.add('hidden');
         if (simBtn) simBtn.style.display = 'flex';
         if (previewBtn) previewBtn.classList.add('hidden');
         document.querySelector('.tutBtnDesktop')?.classList.remove('hidden');
-        setSidebarTab('console'); // Ensure console defaults
+        if (typeof setSidebarTab === 'function') setSidebarTab('console');
       } else if (selectedTier === 2) {
         // Inventor
         document.body.style.background = "linear-gradient(135deg, #4f46e5 0%, #3730a3 50%, #1e1b4b 100%)";
-        workspace.updateToolbox(getTier2Toolbox());
+        if (typeof workspace !== 'undefined' && workspace && typeof workspace.updateToolbox === 'function' && typeof getTier2Toolbox === 'function') {
+          try { workspace.updateToolbox(getTier2Toolbox()); } catch (e) { console.warn('Workspace toolbox update deferred:', e); }
+        }
         if (filterBar) filterBar.style.display = 'flex';
         if (hudToggle) hudToggle.classList.remove('hidden');
         if (simBtn) simBtn.style.display = 'none';
         if (previewBtn) previewBtn.classList.remove('hidden');
         document.querySelector('.tutBtnDesktop')?.classList.add('hidden');
         document.getElementById('simPanel')?.classList.add('hidden');
-        stopSimulation();
+        if (typeof stopSimulation === 'function') stopSimulation();
       }
 
       const landing = document.getElementById('landingPage');
-      landing.style.opacity = '0';
+      if (landing) landing.style.opacity = '0';
       if (typeof sendLandingStateToMigo === 'function') sendLandingStateToMigo(false);
       setTimeout(() => {
-        landing.classList.add('hidden');
+        if (landing) landing.classList.add('hidden');
         if (selectedTier === 3) {
           document.body.style.background = "linear-gradient(135deg, #0f766e 0%, #111827 50%, #064e3b 100%)";
           const aionaPage = document.getElementById('aionaPage');
-          aionaPage.classList.remove('hidden');
-          aionaPage.classList.add('flex');
-          initAionaMode();
+          if (aionaPage) {
+            aionaPage.classList.remove('hidden');
+            aionaPage.classList.add('flex');
+          }
+          if (typeof initAionaMode === 'function') initAionaMode();
         } else {
-          document.getElementById('mainApp').classList.remove('hidden');
-          // Show AI chat float button if chat column is hidden
+          const mainApp = document.getElementById('mainApp');
+          if (mainApp) mainApp.classList.remove('hidden');
           const chatCol = document.getElementById('chatColumn');
           if (chatCol && chatCol.classList.contains('hidden')) {
-            document.getElementById('chatFloatBtn').style.display = 'flex';
+            const chatFloat = document.getElementById('chatFloatBtn');
+            if (chatFloat) chatFloat.style.display = 'flex';
           }
-          Blockly.svgResize(workspace);
+          if (typeof workspace !== 'undefined' && workspace && typeof Blockly !== 'undefined') {
+            try { Blockly.svgResize(workspace); } catch (e) { console.warn(e); }
+          }
         }
       }, 500);
     }
@@ -3439,15 +3612,45 @@
     let isUploading = false;
 
     async function executeGatt(fn) {
-      while (gattBusy) await new Promise(r => setTimeout(r, 10));
+      let waitCount = 0;
+      while (gattBusy) {
+        if (window.SuperAIONATaskEngine && window.SuperAIONATaskEngine.isAborted()) {
+          return;
+        }
+        await new Promise(r => setTimeout(r, 10));
+        waitCount++;
+        if (waitCount > 50) { gattBusy = false; break; }
+      }
+      if (window.SuperAIONATaskEngine && window.SuperAIONATaskEngine.isAborted()) {
+        return;
+      }
       gattBusy = true;
       try {
         const result = await fn();
-        await new Promise(r => setTimeout(r, 20));
+        await new Promise(r => setTimeout(r, 10));
         return result;
+      } catch (e) {
+        console.warn("[GATT] Write error:", e);
       } finally {
         gattBusy = false;
       }
+    }
+
+    function emergencyStopAllMigos() {
+      gattBusy = false;
+      connectedMigos.forEach(migo => {
+        if (migo && migo.writeChar) {
+          try {
+            const bytes = new TextEncoder().encode("CMD:DIR:S");
+            if (typeof migo.writeChar.writeValueWithoutResponse === 'function') {
+              migo.writeChar.writeValueWithoutResponse(bytes).catch(() => { });
+            } else if (typeof migo.writeChar.writeValue === 'function') {
+              migo.writeChar.writeValue(bytes).catch(() => { });
+            }
+          } catch (e) { }
+        }
+      });
+      try { sendCmd('CMD:DIR:S'); } catch (e) { }
     }
 
     function updateStatus(text) {
@@ -3512,6 +3715,9 @@
 
         device.addEventListener('gattserverdisconnected', () => {
           printToConsole(`Disconnected from ${newMigo.name}.`);
+          if (window.SuperAIONATaskEngine) {
+            window.SuperAIONATaskEngine.resetOnDisconnect();
+          }
           const index = connectedMigos.findIndex(m => m.id === newMigo.id);
           if (index !== -1) {
             const wasTelemetrySource = connectedMigos[index].isTelemetrySource;
@@ -3704,19 +3910,24 @@
       })());
 
       if (isForwardRequest && typeof obstacleGuardEnabled !== 'undefined' && obstacleGuardEnabled) {
-        // Drop forward input if emergency turn is running
-        if (typeof _emergencyTurnActive !== 'undefined' && _emergencyTurnActive) return;
+        // If a Super AIONA task is running, allow the dynamic script to control motor movement
+        if (window.SuperAIONATaskEngine && window.SuperAIONATaskEngine.activeTask) {
+          // Bypass obstacle command dropping during Super AIONA task execution
+        } else {
+          // Drop forward input if emergency turn is running
+          if (typeof _emergencyTurnActive !== 'undefined' && _emergencyTurnActive) return;
 
-        // If obstacle is within threshold distance, drop forward command completely!
-        if (typeof isForwardObstacleBlocked === 'function' && isForwardObstacleBlocked()) {
-          isRobotDrivingForward = false;
-          if (typeof aionaLastKnownDist !== 'undefined' && aionaLastKnownDist > 1 && aionaLastKnownDist <= 5.0) {
-            if (typeof triggerEmergencyAvoidanceTurn === 'function') triggerEmergencyAvoidanceTurn();
-          } else {
-            if (typeof showObstacleBlockFeedback === 'function') showObstacleBlockFeedback();
+          // If obstacle is within threshold distance, drop forward command completely!
+          if (typeof isForwardObstacleBlocked === 'function' && isForwardObstacleBlocked()) {
+            isRobotDrivingForward = false;
+            if (typeof aionaLastKnownDist !== 'undefined' && aionaLastKnownDist > 1 && aionaLastKnownDist <= 5.0) {
+              if (typeof triggerEmergencyAvoidanceTurn === 'function') triggerEmergencyAvoidanceTurn();
+            } else {
+              if (typeof showObstacleBlockFeedback === 'function') showObstacleBlockFeedback();
+            }
+            // Reject command — do not write forward power to hardware!
+            return;
           }
-          // Reject command — do not write forward power to hardware!
-          return;
         }
       }
 
@@ -5364,10 +5575,7 @@ Example 1: Move forward for 2 seconds and stop (Explorer):
             systemInstruction: { parts: [{ text: systemText }] },
             generationConfig: {
               temperature: temperature,
-              maxOutputTokens: maxTokens,
-              thinkingConfig: {
-                thinkingBudget: 0
-              }
+              maxOutputTokens: maxTokens
             }
           })
         });
@@ -6875,6 +7083,7 @@ ${JSON.stringify(workspaceState, null, 2)}
       if (transcriptEl) transcriptEl.innerText = '"..."';
 
       hasUserSpoken = false;
+      let aionaFinalTranscript = ""; // Accumulates only finalized speech segments
 
       aionaManualRecognition = new SpeechRecognition();
       aionaManualRecognition.continuous = true; // continuous=true lets user pause and think without auto-stopping
@@ -6888,13 +7097,28 @@ ${JSON.stringify(workspaceState, null, 2)}
 
       aionaManualRecognition.onresult = (e) => {
         hasUserSpoken = true;
-        // Evaluate full e.results array on each result event to prevent word repetition
-        let fullTranscript = "";
-        for (let i = 0; i < e.results.length; i++) {
-          fullTranscript += e.results[i][0].transcript;
+        // Only process NEW results starting from e.resultIndex to prevent repetition.
+        // Final results are appended to aionaFinalTranscript; interim results are shown live.
+        let interimTranscript = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) {
+            aionaFinalTranscript += e.results[i][0].transcript;
+          } else {
+            interimTranscript += e.results[i][0].transcript;
+          }
         }
+        const fullTranscript = aionaFinalTranscript + interimTranscript;
         if (transcriptEl) transcriptEl.innerText = `"${fullTranscript.trim()}"`;
         resetAionaSilenceTimer(false); // Reset silence timer on every chunk of speech
+
+        // Voice Interrupt Safeguard for Active Super Tasks
+        if (window.SuperAIONATaskEngine && window.SuperAIONATaskEngine.activeTask) {
+          const lower = fullTranscript.toLowerCase();
+          if (lower.includes('stop') || lower.includes('abort') || lower.includes('cancel') || lower.includes('halt')) {
+            console.log("[Super AIONA Voice Interrupt] Task cancelled via speech interrupt");
+            window.SuperAIONATaskEngine.abortActiveTask("Voice Command Interruption");
+          }
+        }
       };
 
       aionaManualRecognition.onerror = (err) => {
@@ -7443,6 +7667,65 @@ Example output 6: "100 minus 45 equals 55. That's a nice subtraction calculation
 Example request 7: "Tell me a joke."
 Example output 7: "Why did the robot go on a diet? Because it had too many bytes! Haha, I hope that brought a smile to your face. [EMOTION:HAPPY]"
 
+SUPER AIONA DYNAMIC SELF-CODING MODE (MANDATORY RULE):
+Whenever the user asks you to "code yourself to...", "write a code to...", "program yourself to...", "code a task...", "make yourself...", "make it...", or requests ANY movement, looping, sensor-triggered, or timed behavior (e.g. "move forward for 3 seconds", "dance", "spin", "avoid obstacles", "play a melody", "show MARCO on OLED"), you MUST NOT give plain text excuses or refuse! You MUST output a valid transient JavaScript code block wrapped in <super-aiona-script>...</super-aiona-script> AND you MUST also output the equivalent Arduino C++ code wrapped in <super-aiona-cpp>...</super-aiona-cpp> at the end of your response! The C++ is for educational display. NEVER respond to movement/coding requests with only text — always generate the script.
+
+Available JS API in <super-aiona-script>:
+- await migo.printOled("text", x, y, size) (e.g. await migo.printOled("MARCO", 20, 24, 2))
+- await migo.speak("text")
+- migo.getUltrasonicDistance() (returns distance in cm)
+- await migo.moveForward(speed, durationMs)
+- await migo.moveBackward(speed, durationMs)
+- await migo.turnLeft(speed, durationMs)
+- await migo.turnRight(speed, durationMs)
+- migo.stopMotors()
+- migo.setServoAngle(angle) (0-180)
+- migo.sendFace("SMILE"|"GRIN"|"SMIRK"|"TALK"|"IDLE")
+- await migo.wait(ms)
+- log("message")
+
+Example Output with Super AIONA Script:
+"I can dynamically code that task for you right now! Watch my AI Code live terminal as I execute the code. 
+<super-aiona-script>
+log("Starting Marco Polo Game...");
+await migo.printOled("MARCO", 20, 24, 2);
+for (let i = 1; i <= 3; i++) {
+  log("Waiting for hand sweep " + i + "/3...");
+  while (true) {
+    let dist = migo.getUltrasonicDistance();
+    if (dist > 0 && dist <= 15) {
+      log("Hand detected at " + dist + "cm!");
+      await migo.speak("POLO");
+      await migo.wait(1000);
+      break;
+    }
+    await migo.wait(100);
+  }
+}
+log("Marco Polo game complete!");
+</super-aiona-script>
+<super-aiona-cpp>
+void setup() {
+  Serial.begin(115200);
+  oledInit();
+}
+void loop() {
+  Serial.println("Starting Marco Polo Game...");
+  printOled("MARCO", 20, 24, 2);
+  for (int i = 1; i <= 3; i++) {
+    while (true) {
+      int dist = getUltrasonicDistance();
+      if (dist > 0 && dist <= 15) {
+        Serial.println("Hand detected!");
+        delay(1000);
+        break;
+      }
+      delay(100);
+    }
+  }
+}
+</super-aiona-cpp> [EMOTION:EXCITED]"
+
 EMOTION TAG:
 At the very end of your response, you MUST append one of these emotion tags:
 - [EMOTION:HAPPY] - happy, positive, excited
@@ -7768,13 +8051,15 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           wordsWithMetadata.push({ word, punctuation });
         }
 
+        window.aionaActiveTimeouts = window.aionaActiveTimeouts || [];
         let delayOffset = 0;
         wordsWithMetadata.forEach((w) => {
-          setTimeout(() => {
-            if (aionaSpeechRunning && !aionaSequenceRunning) {
+          const tid = setTimeout(() => {
+            if (aionaSpeechRunning && !aionaSequenceRunning && !(window.SuperAIONATaskEngine && window.SuperAIONATaskEngine.isAborted())) {
               triggerWordGesture(w.word, w.punctuation);
             }
           }, delayOffset);
+          window.aionaActiveTimeouts.push(tid);
           delayOffset += 330;
         });
 
@@ -7928,7 +8213,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     }
 
     function aionaDoThinkingPhysicalReactions() {
-      if (!myCharacteristic) return;
+      if (!myCharacteristic || (window.SuperAIONATaskEngine && window.SuperAIONATaskEngine.activeTask)) return;
       setTimeout(() => { sendCmd('CMD:JOY:-120:120:'); }, 0);
       setTimeout(() => { sendCmd('CMD:DIR:S'); }, 80);
       setTimeout(() => { sendCmd('CMD:JOY:120:-120:'); }, 150);
@@ -7936,6 +8221,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     }
 
     function aionaDoWakeWordWiggle() {
+      if (window.SuperAIONATaskEngine && window.SuperAIONATaskEngine.activeTask) return;
       const panel = document.getElementById("simPanel");
       const isSimulating = panel && !panel.classList.contains("hidden");
       if (!isSimulating && !myCharacteristic) return;
@@ -7948,6 +8234,10 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
     // Wiggle dance or sway movements (supports repeating actions)
     function aionaDoEmotionPhysicalReactions(emotion, userInput = '') {
+      if (window.SuperAIONATaskEngine && window.SuperAIONATaskEngine.activeTask) {
+        aionaReactionRunning = false;
+        return;
+      }
       aionaReactionRunning = true;
 
       // Helper to perform the final cleanup and transition state to idle
@@ -8037,8 +8327,32 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       const msgs = document.getElementById('aionaChatMessages');
       if (!msgs) return;
 
+      // Check for Super AIONA dynamic self-coding script tag
+      const superScriptMatch = text.match(/<super-aiona-script>([\s\S]*?)<\/super-aiona-script>/i);
+      const superCppMatch = text.match(/<super-aiona-cpp>([\s\S]*?)<\/super-aiona-cpp>/i);
+
+      if (superScriptMatch) {
+        const extractedCode = superScriptMatch[1].trim();
+        const extractedCpp = superCppMatch ? superCppMatch[1].trim() : extractedCode;
+
+        const display = document.getElementById("superAionaCodeDisplay");
+        if (display) display.value = extractedCpp;
+        SuperAIONATaskEngine.currentCode = extractedCode; // We execute JS, not C++
+        SuperAIONATaskEngine.log("C++ equivalent generated for educational display. Running JS natively...", "system");
+
+        const autoRun = document.getElementById("autoRunSuperCodeCheck")?.checked;
+        if (autoRun) {
+          SuperAIONATaskEngine.executeDynamicTask(extractedCode);
+        } else {
+          SuperAIONATaskEngine.log("Loaded dynamic script preview. Press 'Run Code' to execute.", "info");
+        }
+      }
+
       const bubble = document.createElement('div');
-      let cleanText = text.replace(/<blockly-suggestion>[^]*?<\/blockly-suggestion>/g, "").trim();
+      let cleanText = text.replace(/<blockly-suggestion>[^]*?<\/blockly-suggestion>/g, "")
+        .replace(/<super-aiona-script>[^]*?<\/super-aiona-script>/g, "")
+        .replace(/<super-aiona-cpp>[^]*?<\/super-aiona-cpp>/g, "")
+        .trim();
       let formattedHtml = formatMarkdownToHtml(cleanText);
 
       if (role === 'user') {
@@ -8098,6 +8412,662 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
       msgs.appendChild(bubble);
       msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    /* ==========================================================================
+       SUPER AIONA SELF-CODING ENGINE (Transient Task Execution & Sandbox)
+       ========================================================================== */
+    window.SuperAIONATaskEngine = {
+      activeTask: null,
+      autoRunEnabled: true,
+      currentCode: "",
+      retryCount: 0,
+
+      log(msg, type = "info") {
+        const logEl = document.getElementById("superAionaLogDisplay") || document.getElementById("superAionaConsoleLog");
+        if (!logEl) return;
+        const item = document.createElement("div");
+        const timestamp = new Date().toLocaleTimeString();
+        let colorClass = "text-white/80";
+        if (type === "error") colorClass = "text-red-400 font-bold";
+        if (type === "success") colorClass = "text-emerald-400 font-bold";
+        if (type === "warn") colorClass = "text-amber-300";
+        if (type === "system") colorClass = "text-teal-300 font-bold";
+
+        item.className = colorClass;
+        item.innerText = `[${timestamp}] ${msg}`;
+        logEl.appendChild(item);
+        logEl.scrollTop = logEl.scrollHeight;
+      },
+
+      updateOrbVisuals(isSuperMode, statusLabel = "") {
+        const glow = document.getElementById("aionaOrbGlow");
+        const core = document.getElementById("aionaOrbCore");
+        const icon = document.getElementById("aionaOrbIcon");
+        const statusText = document.getElementById("aionaStatusText");
+        const statusSubtext = document.getElementById("aionaStatusSubtext");
+
+        if (isSuperMode) {
+          if (glow) glow.className = "absolute inset-0 rounded-full bg-amber-500/40 blur-xl transition-all duration-700 scale-125 animate-pulse";
+          if (core) core.className = "w-12 h-12 md:w-16 md:h-16 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-400 border border-amber-300 shadow-[0_0_30px_rgba(245,158,11,0.8)] flex items-center justify-center transition-all duration-500 scale-110 relative";
+          if (icon) icon.className = "ph-bold ph-terminal-window text-lg md:text-2xl text-slate-950 drop-shadow";
+          if (statusText) statusText.innerText = statusLabel || "Super Task Active";
+          if (statusSubtext) statusSubtext.innerText = "Dynamic transient self-coded task active...";
+        } else {
+          if (glow) glow.className = "absolute inset-0 rounded-full bg-teal-400/20 blur-xl transition-all duration-700 scale-110";
+          if (core) core.className = "w-12 h-12 md:w-16 md:h-16 rounded-full bg-gradient-to-tr from-teal-500 to-emerald-400 border border-white/20 shadow-[0_0_20px_rgba(20,184,166,0.6)] flex items-center justify-center transition-all duration-500 scale-100 relative";
+          if (icon) icon.className = "ph-fill ph-robot text-lg md:text-2xl text-white drop-shadow";
+          if (statusText) statusText.innerText = "Sleeping";
+          if (statusSubtext) statusSubtext.innerText = 'Say "Aiona" to wake me up!';
+        }
+      },
+
+      setStatus(statusStr) {
+        const badge = document.getElementById("superAionaStatusBadge");
+        if (badge) badge.innerText = statusStr.toUpperCase();
+
+        const headerKillBtn = document.getElementById("headerKillBtn");
+        const modalKillBtn = document.getElementById("superAionaAbortBtn");
+
+        if (statusStr === "RUNNING") {
+          this.updateOrbVisuals(true, "Super Task Active");
+          if (headerKillBtn) {
+            headerKillBtn.disabled = false;
+            headerKillBtn.className = "bg-red-600/80 hover:bg-red-500 text-white py-1.5 px-2.5 md:px-3 text-xs font-bold flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 shadow-[0_0_15px_rgba(220,38,38,0.4)] border border-red-400/40 cursor-pointer";
+            headerKillBtn.title = "Emergency Stop All Tasks, Gestures & Motor Movements";
+          }
+          if (modalKillBtn) {
+            modalKillBtn.disabled = false;
+            modalKillBtn.className = "py-1.5 px-3 bg-red-600/80 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 shadow active:scale-95 cursor-pointer";
+          }
+          const runBtn = document.getElementById("superAionaRunBtn");
+          if (runBtn) {
+            runBtn.disabled = true;
+            runBtn.className = "py-1.5 px-3 bg-slate-700/50 text-slate-500 font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 border border-slate-600/30 cursor-not-allowed";
+          }
+        } else if (statusStr === "IDLE" || statusStr === "COMPLETED" || statusStr === "ABORTED" || statusStr === "ERROR") {
+          this.updateOrbVisuals(false);
+          if (headerKillBtn) {
+            headerKillBtn.disabled = true;
+            headerKillBtn.className = "bg-slate-700/50 text-slate-500 py-1.5 px-2.5 md:px-3 text-xs font-bold flex items-center justify-center gap-1.5 rounded-xl transition-all border border-slate-600/30 opacity-70 cursor-not-allowed";
+            headerKillBtn.title = "No active tasks to stop";
+          }
+          if (modalKillBtn) {
+            modalKillBtn.disabled = true;
+            modalKillBtn.className = "py-1.5 px-3 bg-slate-700/50 text-slate-500 font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 border border-slate-600/30 cursor-not-allowed";
+          }
+          const runBtn = document.getElementById("superAionaRunBtn");
+          if (runBtn) {
+            runBtn.disabled = false;
+            runBtn.className = "py-1.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer";
+          }
+        }
+
+      },
+
+      async executeDynamicTask(codeString, timeoutMs = null) {
+        if (!timeoutMs) {
+          timeoutMs = (typeof v5Settings !== 'undefined' && v5Settings.aiCodeTimeoutMins)
+            ? v5Settings.aiCodeTimeoutMins * 60000
+            : 3600000; // Default 1 hour fallback
+        }
+
+        // ── JS CODE SANITIZER ──────────────────────────────────────────────────
+        // Strip common AI output artifacts that cause 'Unexpected token' parse errors
+        // before the code reaches new Function(). This prevents pointless self-heal loops.
+        let sanitized = codeString
+          .replace(/^```[\w]*\n?/gm, '')          // strip opening ``` or ```javascript fences
+          .replace(/^```\s*$/gm, '')               // strip closing ``` fences
+          .replace(/^#include\s+.*$/gm, '')         // strip stray C++ #include lines
+          .replace(/^#define\s+.*$/gm, '')          // strip stray C++ #define lines
+          .replace(/^\/\/ ━.*$/gm, '')              // strip decorative comment dividers
+          .replace(/<\/?super-aiona-(?:script|cpp)>/gi, '') // strip any leftover XML tags
+          .replace(/<\/?[a-z][\s\S]*?>/gi, '')      // strip any other stray HTML/XML tags
+          .trim();
+
+        if (sanitized !== codeString) {
+          this.log("Code sanitizer: stripped non-JS artifacts from script before execution.", "system");
+        }
+        codeString = sanitized;
+        // ──────────────────────────────────────────────────────────────────────
+
+        if (this.activeTask) {
+          this.log("A task is already running! Interrupting previous task...", "warn");
+          this.abortActiveTask("Overridden by new task execution");
+        }
+
+        const abortController = new AbortController();
+        const startTime = Date.now();
+        let timerInterval = null;
+
+        this.activeTask = {
+          id: "super_task_" + Date.now(),
+          status: "RUNNING",
+          abortController: abortController,
+          startTime: startTime,
+          timeoutMs: timeoutMs
+        };
+
+        // UI Updates
+        this.setStatus("RUNNING");
+        this.log(">>> Executing dynamic Super AIONA transient task script...", "system");
+
+        // Live Timer Update
+        const timerEl = document.getElementById("superTaskTimer");
+        timerInterval = setInterval(() => {
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          const maxSec = (timeoutMs / 1000).toFixed(1);
+          if (timerEl) timerEl.innerText = `Elapsed: ${elapsed}s / Max: ${maxSec}s`;
+        }, 100);
+
+        // Microcontroller / Robot API bridge for dynamic code execution
+        // NOTE: Uses sendCmd (not sendCmdReliable) because MIGO firmware does NOT send ACK packets
+        // for motor/OLED/face commands. sendCmdReliable would timeout after 3s and crash the task.
+        const superSendCmd = async (cmd) => {
+          // Write directly to BLE via the same GATT queue as sendCmd, no ACK waiting
+          return sendCmd(cmd);
+        };
+
+        const migoBridge = {
+          // ── MOTORS ─────────────────────────────────────────────────
+          moveForward: async (speed = 150, durationMs = 1000) => {
+            this.checkAborted(abortController);
+            this.log(`Action: Moving Forward (speed: ${speed}, time: ${durationMs}ms)`);
+            await superSendCmd(`CMD:JOY:${speed}:${speed}:`);
+            await this.wait(durationMs, abortController);
+            this.checkAborted(abortController);
+            await superSendCmd('CMD:DIR:S');
+          },
+
+          moveBackward: async (speed = 150, durationMs = 1000) => {
+            this.checkAborted(abortController);
+            this.log(`Action: Moving Backward (speed: ${speed}, time: ${durationMs}ms)`);
+            await superSendCmd(`CMD:JOY:-${speed}:-${speed}:`);
+            await this.wait(durationMs, abortController);
+            this.checkAborted(abortController);
+            await superSendCmd('CMD:DIR:S');
+          },
+
+          turnLeft: async (speed = 150, durationMs = 800) => {
+            this.checkAborted(abortController);
+            this.log(`Action: Turning Left (speed: ${speed}, time: ${durationMs}ms)`);
+            await superSendCmd(`CMD:JOY:-${speed}:${speed}:`);
+            await this.wait(durationMs, abortController);
+            this.checkAborted(abortController);
+            await superSendCmd('CMD:DIR:S');
+          },
+
+          turnRight: async (speed = 150, durationMs = 800) => {
+            this.checkAborted(abortController);
+            this.log(`Action: Turning Right (speed: ${speed}, time: ${durationMs}ms)`);
+            await superSendCmd(`CMD:JOY:${speed}:-${speed}:`);
+            await this.wait(durationMs, abortController);
+            this.checkAborted(abortController);
+            await superSendCmd('CMD:DIR:S');
+          },
+
+          stopMotors: async () => {
+            this.log('Action: Stop Motors');
+            emergencyStopAllMigos();
+          },
+
+          // ── OLED DISPLAY ──────────────────────────────────────────
+          printOled: async (text, x = 20, y = 24, size = 2) => {
+            this.checkAborted(abortController);
+            this.log(`Action: OLED Print -> "${text}"`);
+            await superSendCmd('CMD:OLED_INIT:21:22');
+            await this.wait(60, abortController);
+            this.checkAborted(abortController);
+            await superSendCmd('CMD:OLED_CLEAR');
+            await this.wait(60, abortController);
+            this.checkAborted(abortController);
+            await superSendCmd(`CMD:OLED_PRINT:${x}:${y}:${size}:${text}`);
+            await this.wait(60, abortController);
+            this.checkAborted(abortController);
+            await superSendCmd('CMD:OLED_SHOW');
+          },
+
+          oledInit: async (sda = 21, scl = 22) => {
+            this.checkAborted(abortController);
+            this.log(`Action: OLED Init (SDA:${sda} SCL:${scl})`);
+            await superSendCmd(`CMD:OLED_INIT:${sda}:${scl}`);
+          },
+
+          oledClear: async () => {
+            this.checkAborted(abortController);
+            this.log('Action: OLED Clear');
+            await superSendCmd('CMD:OLED_CLEAR');
+          },
+
+          oledPrint: async (text, x = 0, y = 0, size = 1) => {
+            this.checkAborted(abortController);
+            this.log(`Action: OLED Print Text -> "${text}" at (${x},${y}) size ${size}`);
+            await superSendCmd(`CMD:OLED_PRINT:${x}:${y}:${size}:${text}`);
+          },
+
+          oledShow: async () => {
+            this.checkAborted(abortController);
+            this.log('Action: OLED Show (refresh screen)');
+            await superSendCmd('CMD:OLED_SHOW');
+          },
+
+          // ── FACE EXPRESSIONS ─────────────────────────────────────
+          sendFace: async (expression) => {
+            this.checkAborted(abortController);
+            this.log(`Action: Face -> ${expression}`);
+            const validFaces = ['SMILE', 'GRIN', 'TALK', 'IDLE', 'SMIRK'];
+            const face = expression.toUpperCase();
+            await superSendCmd(`CMD:FACE:${validFaces.includes(face) ? face : 'SMILE'}`);
+          },
+
+          // ── SERVO / ARM ────────────────────────────────────────────
+          setServoAngle: async (angle, pin = 14) => {
+            this.checkAborted(abortController);
+            const clampedAngle = Math.max(0, Math.min(100, angle));
+            this.log(`Action: Servo (pin ${pin}) -> ${clampedAngle}%`);
+            if (typeof aionaSetServo === 'function') aionaSetServo(clampedAngle, pin);
+            await superSendCmd(`CMD:SERVO:${pin}:${clampedAngle}:`);
+          },
+
+          // ── BUZZER / TONE ─────────────────────────────────────────
+          playTone: async (freq = 1000, durationMs = 500, pin = 14) => {
+            this.checkAborted(abortController);
+            const f = Math.min(Math.max(Number(freq), 50), 8000);
+            const d = Math.min(Math.max(Number(durationMs), 50), 5000);
+            this.log(`Action: Tone (pin ${pin}, freq ${f}Hz, ${d}ms)`);
+            await superSendCmd(`CMD:TONE:${pin}:${f}:${d}`);
+            await this.wait(d, abortController);
+          },
+
+          // ── LED ────────────────────────────────────────────────────
+          setLed: async (state) => {
+            this.checkAborted(abortController);
+            const s = (state === true || state === 'on' || state === 1) ? 'on' : 'off';
+            this.log(`Action: LED -> ${s}`);
+            await superSendCmd(`CMD:LED:${s}`);
+          },
+
+          // ── GPIO PIN CONTROL ──────────────────────────────────────
+          pinMode: async (pin, mode) => {
+            this.checkAborted(abortController);
+            const m = (mode.toUpperCase() === 'IN' || mode.toUpperCase() === 'INPUT') ? 'IN' : 'OUT';
+            this.log(`Action: pinMode(${pin}, ${m})`);
+            await superSendCmd(`CMD:PM:${pin}:${m}`);
+          },
+
+          digitalWrite: async (pin, val) => {
+            this.checkAborted(abortController);
+            const v = (val === true || val === 1 || val === 'HIGH') ? 1 : 0;
+            this.log(`Action: digitalWrite(${pin}, ${v})`);
+            await superSendCmd(`CMD:DW:${pin}:${v}`);
+          },
+
+          analogWrite: async (pin, val) => {
+            this.checkAborted(abortController);
+            const v = Math.min(Math.max(Number(val), 0), 255);
+            this.log(`Action: analogWrite(${pin}, ${v}) [PWM 0-255]`);
+            await superSendCmd(`CMD:AW:${pin}:${v}`);
+          },
+
+          // ── SENSOR READINGS ───────────────────────────────────────
+          getUltrasonicDistance: () => {
+            this.checkAborted(abortController);
+            if (typeof lastSensorDistCm !== 'undefined' && lastSensorDistCm > 0) return lastSensorDistCm;
+            if (typeof aionaLastKnownDist !== 'undefined' && aionaLastKnownDist > 0) return aionaLastKnownDist;
+            return 999;
+          },
+
+          getAnalogPort: (port = 'A') => {
+            this.checkAborted(abortController);
+            const p = port.toUpperCase();
+            if (p === 'A' && typeof aionaLastPlugA !== 'undefined') return aionaLastPlugA;
+            if (p === 'B' && typeof aionaLastPlugB !== 'undefined') return aionaLastPlugB;
+            if (p === 'C' && typeof aionaLastPlugC !== 'undefined') return aionaLastPlugC;
+            return 0;
+          },
+
+          // ── SPEECH ────────────────────────────────────────────────
+          speak: async (text) => {
+            this.checkAborted(abortController);
+            this.log(`Speech: "${text}"`);
+            if (typeof speakText === 'function') speakText(text);
+          },
+
+          // ── TIMING ────────────────────────────────────────────────
+          wait: (ms) => this.wait(ms, abortController)
+        };
+
+        try {
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error(`Task timed out after ${timeoutMs / 1000}s`)), timeoutMs);
+          });
+
+          // Abort-cancel promise: resolves (not rejects) immediately when abort fires,
+          // which causes Promise.race to settle and the catch block sees signal.aborted=true
+          const abortPromise = new Promise((resolve) => {
+            abortController.signal.addEventListener('abort', () => {
+              // Immediately stop motors on abort signal
+              try { sendCmd('CMD:DIR:S'); } catch (e) { }
+              const abortErr = new Error('Task aborted by user');
+              abortErr.name = 'AbortError';
+              resolve(Promise.reject(abortErr));
+            }, { once: true });
+          });
+
+          const scriptRunner = new Function('migo', 'log', 'signal', `
+            return (async () => {
+              ${codeString}
+            })();
+          `);
+
+          await Promise.race([
+            scriptRunner(migoBridge, (msg) => this.log(msg), abortController.signal),
+            timeoutPromise,
+            abortPromise
+          ]);
+
+          this.log("Task executed to completion successfully!", "success");
+          this.setStatus("COMPLETED");
+
+        } catch (err) {
+          // If a task times out or hits an error, immediately abort the script!
+          try { abortController.abort(err.message || "Task ended via error/timeout"); } catch (e) { }
+
+          if (err.name === 'AbortError' || abortController.signal.aborted) {
+            this.log(`Task Aborted: ${err.message || 'Cancelled by user'}`, "warn");
+            this.setStatus("ABORTED");
+          } else {
+            this.log(`Execution Exception: ${err.message}`, "error");
+            this.setStatus("ERROR");
+
+            // --- AUTO-CORRECTION (SELF-HEALING) ENGINE ---
+            if (this.retryCount < 1) {
+              this.retryCount++;
+              this.log("Auto-Correction triggered! Asking AI Code engine to fix the mistake...", "warn");
+              setTimeout(() => {
+                if (window.aionaSendMessageText) {
+                  const errorPrompt = `SYSTEM ALERT: The execution of the previous <super-aiona-script> failed with error: ${err.message}. Please analyze the mistake, fix the JavaScript and C++ code, and output the corrected blocks.`;
+                  window.aionaSendMessageText(errorPrompt, true);
+                }
+              }, 1000);
+            } else {
+              this.log("Max auto-correction retries reached. Stopping.", "error");
+            }
+          }
+        } finally {
+          // GUARANTEED CLEANUP & STATE AUTO-REVERSION
+          clearInterval(timerInterval);
+          this.log("Running transient teardown & reverting state to normal...", "system");
+
+          // Force abort again just in case the script succeeded but left dangling async loops
+          try { abortController.abort("Task finished"); } catch (e) { }
+
+          // Force stop motors regardless of what happened
+          try { sendCmd('CMD:DIR:S'); } catch (e) { }
+          try { migoBridge.stopMotors(); } catch (e) { }
+
+          // Only clear activeTask if it hasn't been overwritten by a NEW task
+          if (this.activeTask && this.activeTask.abortController === abortController) {
+            this.activeTask = null;
+            if (runBtn) runBtn.disabled = false;
+
+            setTimeout(() => {
+              // Double check again before setting to IDLE
+              if (!this.activeTask) {
+                this.setStatus("IDLE");
+                const statusText = document.getElementById("aionaStatusText");
+                if (statusText) statusText.innerText = "Sleeping";
+              }
+            }, 2000);
+          } else {
+            this.log("Skipping IDLE teardown because a newer task is active.", "system");
+          }
+        }
+      },
+
+      isAborted(abortController) {
+        if (abortController && abortController.signal.aborted) return true;
+        if (this.activeTask && this.activeTask.abortController && this.activeTask.abortController.signal.aborted) return true;
+        return false;
+      },
+
+      checkAborted(abortController) {
+        if (this.isAborted(abortController)) {
+          const err = new Error("Task execution aborted");
+          err.name = "AbortError";
+          throw err;
+        }
+      },
+
+      wait(ms, abortController) {
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            resolve();
+          }, ms);
+
+          if (abortController) {
+            abortController.signal.addEventListener("abort", () => {
+              clearTimeout(timer);
+              const err = new Error("Task execution aborted during wait");
+              err.name = "AbortError";
+              reject(err);
+            }, { once: true });
+          }
+        });
+      },
+
+      abortActiveTask(reason = "User manual termination") {
+        try { emergencyStopAllMigos(); } catch (e) { }
+        if (this.activeTask && this.activeTask.abortController) {
+          this.log(`Abort Triggered: ${reason}`, "warn");
+          try { this.activeTask.abortController.abort(reason); } catch (e) { }
+        } else {
+          this.log("No active task running.", "warn");
+        }
+        this.setStatus("ABORTED");
+      },
+
+      resetOnDisconnect() {
+        emergencyStopAllMigos();
+        this.abortActiveTask("MIGO hardware disconnected or restarted");
+        this.currentCode = "";
+        const display = document.getElementById("superAionaCodeDisplay");
+        if (display) {
+          if (display.tagName === 'TEXTAREA' || display.tagName === 'INPUT') display.value = "";
+          else display.innerText = "";
+        }
+        clearSuperAionaLogs();
+        this.setStatus("IDLE");
+        closeSuperAionaModal();
+        this.log("MIGO hardware reset/disconnected. Super AIONA transient tasks cleared.", "system");
+      }
+    };
+
+    // Master Emergency Kill System (Stops Tasks, Gestures, Speech TTS & BLE Motors simultaneously)
+    window.masterKillAllAionaTasks = function (reason = "User Emergency Stop") {
+      console.warn("[MASTER KILL] Emergency stopping all AIONA tasks, movements, TTS, and gesture timers. Reason:", reason);
+
+      // 1. Abort Super AIONA dynamic task engine
+      if (window.SuperAIONATaskEngine) {
+        try {
+          window.SuperAIONATaskEngine.abortActiveTask(reason);
+          // Reinforcement: Force clear active task if it somehow persisted
+          if (window.SuperAIONATaskEngine.activeTask) {
+            window.SuperAIONATaskEngine.activeTask = null;
+          }
+          window.SuperAIONATaskEngine.setStatus("IDLE");
+        } catch (e) {
+          console.warn("[MASTER KILL] Error aborting task engine:", e);
+        }
+      }
+
+      // 2. Abort AIONA command sequence loop
+      if (typeof currentAionaSequenceAbort === 'function') {
+        try { currentAionaSequenceAbort(); } catch (e) { }
+        currentAionaSequenceAbort = null;
+      }
+
+      // 3. Stop browser Web Speech TTS immediately
+      if (window.speechSynthesis) {
+        try { window.speechSynthesis.cancel(); } catch (e) { }
+      }
+
+      // 4. Cancel all pending gesture/movement setTimeout timers
+      aionaSpeechRunning = false;
+      aionaSequenceRunning = false;
+      aionaReactionRunning = false;
+
+      if (window.aionaActiveTimeouts && Array.isArray(window.aionaActiveTimeouts)) {
+        window.aionaActiveTimeouts.forEach(id => clearTimeout(id));
+        window.aionaActiveTimeouts = [];
+      }
+
+      if (typeof aionaTalkPulseInterval !== 'undefined' && aionaTalkPulseInterval) {
+        clearInterval(aionaTalkPulseInterval);
+        aionaTalkPulseInterval = null;
+      }
+      if (typeof aionaArmLowerTimer !== 'undefined' && aionaArmLowerTimer) {
+        clearInterval(aionaArmLowerTimer);
+        aionaArmLowerTimer = null;
+      }
+
+      // 5. Direct BLE Emergency Hardware Stop
+      try { emergencyStopAllMigos(); } catch (e) { }
+      // Fallback: brute force send stop command in case emergencyStopAllMigos failed
+      try { sendCmd('CMD:DIR:S'); } catch (e) { }
+
+      // 6. Reset facial expression and orb state
+      try { sendCmd('CMD:FACE:IDLE'); } catch (e) { }
+      if (typeof setAionaState === 'function') setAionaState('idle');
+    };
+
+    // UI Modal Handlers
+    function openSuperAionaModal() {
+      const modal = document.getElementById("superAionaModal");
+      if (modal) modal.classList.remove("hidden");
+    }
+
+    function closeSuperAionaModal() {
+      const modal = document.getElementById("superAionaModal");
+      if (modal) modal.classList.add("hidden");
+    }
+
+    function clearSuperAionaLogs() {
+      const logEl = document.getElementById("superAionaLogDisplay") || document.getElementById("superAionaConsoleLog");
+      if (logEl) logEl.innerHTML = '<div class="text-white/40 italic">> Logs cleared. Ready for next task.</div>';
+    }
+
+    function runCurrentSuperAionaCode() {
+      const display = document.getElementById("superAionaCodeDisplay");
+      if (!display) return;
+      let code = (display.value !== undefined) ? display.value : display.innerText;
+
+      // Detect if the editor is showing C++ educational code instead of runnable JS.
+      // Uses multiple pattern checks to catch all common C++ signatures.
+      const isCppCode = (
+        /^\s*void\s+(?:setup|loop)\s*\(/m.test(code) ||       // void setup() / void loop()
+        /Serial\.(?:begin|print|println)\s*\(/m.test(code) ||  // Serial.begin / println
+        /^\s*#include\s+/m.test(code) ||                       // #include <...>
+        /^\s*#define\s+/m.test(code) ||                        // #define ...
+        /\bpinMode\s*\(\s*\d+/m.test(code) ||                  // pinMode(pin, ...)
+        /\bdigitalWrite\s*\(\s*\d+/m.test(code) ||             // digitalWrite(pin, ...)
+        /\banalogWrite\s*\(\s*\d+/m.test(code) ||              // analogWrite(pin, ...)
+        /\bdelay\s*\(\s*\d+/m.test(code) ||                    // delay(ms)
+        code.includes('<Adafruit') ||
+        code.includes('<Wire.h>')
+      );
+
+      if (isCppCode && SuperAIONATaskEngine.currentCode) {
+        SuperAIONATaskEngine.log("Editor shows C++ educational code — running stored JavaScript instead...", "system");
+        code = SuperAIONATaskEngine.currentCode;
+      }
+
+      if (!code || code.trim().length === 0 || code.includes("Waiting for task generation")) {
+        SuperAIONATaskEngine.log("No code in terminal editor to execute. Type some code or select a preset task!", "warn");
+        return;
+      }
+      SuperAIONATaskEngine.executeDynamicTask(code);
+    }
+
+    function abortSuperAionaTask(reason) {
+      masterKillAllAionaTasks(reason);
+    }
+
+    function runSuperAionaDemoTask(taskType) {
+      openSuperAionaModal();
+      let demoCode = "";
+
+      if (taskType === 'marco_polo') {
+        demoCode = `// Preset Demo: Marco Polo Game (OLED + Ultrasonic Proximity)
+log("Starting Marco Polo Game...");
+await migo.printOled("MARCO", 20, 24, 2);
+await migo.sendFace("GRIN");
+
+for (let i = 1; i <= 3; i++) {
+  log("Waiting for hand sweep (" + i + "/3)...");
+  while (true) {
+    let dist = migo.getUltrasonicDistance();
+    if (dist > 0 && dist <= 15) {
+      log("Hand detected at " + dist + "cm!");
+      await migo.speak("POLO");
+      await migo.wait(1000);
+      break;
+    }
+    await migo.wait(150);
+  }
+}
+log("Marco Polo game complete!");
+await migo.sendFace("SMILE");`;
+      } else if (taskType === 'dance_triangle') {
+        demoCode = `// Preset Demo 1: Triangle Dance Pattern
+log("Starting Triangle Motion...");
+await migo.sendFace("GRIN");
+for (let i = 1; i <= 3; i++) {
+  log("Triangle Side " + i + "/3");
+  await migo.moveForward(140, 800);
+  await migo.turnRight(160, 600);
+}
+await migo.sendFace("SMILE");
+await migo.speak("Triangle dance complete!");`;
+      } else if (taskType === 'ultrasonic_scan') {
+        demoCode = `// Preset Demo 2: Ultrasonic Obstacle Sweep
+log("Sweeping sensor left and right...");
+await migo.sendFace("TALK");
+await migo.setServoAngle(30);
+await migo.wait(500);
+let distLeft = migo.getUltrasonicDistance();
+log("Left Clearance: " + distLeft + " cm");
+
+await migo.setServoAngle(150);
+await migo.wait(500);
+let distRight = migo.getUltrasonicDistance();
+log("Right Clearance: " + distRight + " cm");
+
+await migo.setServoAngle(90);
+await migo.sendFace("SMILE");
+log("Obstacle sweep finished.");`;
+      } else if (taskType === 'happy_spin') {
+        demoCode = `// Preset Demo 3: 360 Spin & Greeting
+log("Executing 360° Spin...");
+await migo.sendFace("GRIN");
+await migo.turnLeft(180, 1500);
+await migo.speak("Hello! Super AIONA dynamic task execution complete.");
+await migo.sendFace("SMILE");`;
+      }
+
+      const display = document.getElementById("superAionaCodeDisplay");
+      if (display) {
+        if (display.tagName === 'TEXTAREA' || display.tagName === 'INPUT') display.value = demoCode;
+        else display.innerText = demoCode;
+      }
+      SuperAIONATaskEngine.currentCode = demoCode;
+
+      const autoRun = document.getElementById("autoRunSuperCodeCheck")?.checked;
+      if (autoRun) {
+        SuperAIONATaskEngine.executeDynamicTask(demoCode);
+      } else {
+        SuperAIONATaskEngine.log("Loaded preset code into terminal editor. Press 'Run Code' to execute.", "info");
+      }
     }
 
 
@@ -8639,9 +9609,11 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       const maxSpd = document.getElementById('maxSpeedSlider')?.value;
       const obsThresh = document.getElementById('obstacleThreshSlider')?.value;
       const slpTimeout = document.getElementById('sleepTimeoutSlider')?.value;
+      const aiTimeout = document.getElementById('aiCodeTimeoutSlider')?.value;
       if (maxSpd) updateMaxSpeed(maxSpd);
       if (obsThresh) updateObstacleThresh(obsThresh);
       if (slpTimeout) updateSleepTimeout(slpTimeout);
+      if (aiTimeout) updateAiCodeTimeout(aiTimeout);
 
       const badge = document.getElementById('settingsSavedBadge');
       if (badge) {
@@ -8659,9 +9631,11 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       const sl = document.getElementById('maxSpeedSlider');
       const od = document.getElementById('obstacleThreshSlider');
       const st = document.getElementById('sleepTimeoutSlider');
+      const at = document.getElementById('aiCodeTimeoutSlider');
       if (sl) { sl.value = v5MaxSpeed; updateMaxSpeed(v5MaxSpeed, true); }
       if (od) { od.value = v5ObstacleThresh; updateObstacleThresh(v5ObstacleThresh, true); }
       if (st) { st.value = v5Settings.sleepTimeoutMins || 5; updateSleepTimeout(st.value, true); }
+      if (at) { at.value = v5Settings.aiCodeTimeoutMins || 60; updateAiCodeTimeout(at.value, true); }
       // Sync toggle visuals
       ['dpadInvertFB', 'dpadInvertLR', 'joyInvertFB', 'joyInvertLR', 'blockInvertFB', 'blockInvertLR', 'landingIdleAnim', 'simulatedSleepEnabled'].forEach(k => updateToggleVisual(k));
       // Sync obstacle guard toggle in settings
@@ -8721,11 +9695,10 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
       const showFeedback = (msg, isError = false) => {
         if (!feedback) return;
-        feedback.className = `mt-2 text-[10px] px-3 py-1.5 rounded-lg border font-semibold ${
-          isError
+        feedback.className = `mt-2 text-[10px] px-3 py-1.5 rounded-lg border font-semibold ${isError
             ? 'text-red-300 bg-red-500/15 border-red-500/40'
             : 'text-teal-300 bg-teal-500/15 border-teal-500/40'
-        }`;
+          }`;
         feedback.textContent = msg;
         feedback.classList.remove('hidden');
         setTimeout(() => feedback.classList.add('hidden'), 4000);
@@ -8772,7 +9745,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     // Show last-flashed badge in the OTA card
     function refreshOtaLastFlashedBadge() {
       const badge = document.getElementById('otaLastFlashedBadge');
-      const text  = document.getElementById('otaLastFlashedText');
+      const text = document.getElementById('otaLastFlashedText');
       if (!badge || !text) return;
       const stored = localStorage.getItem('migo_ota_last_flash');
       if (!stored) { badge.classList.add('hidden'); return; }
@@ -8806,18 +9779,18 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     // Core flash routine — separated so it can be called from both
     // the normal flow and the "Flash Anyway" confirmation button
     async function _executeOtaFlash(bytes, activeMigo) {
-      const container    = document.getElementById('otaProgressContainer');
-      const activeRow    = document.getElementById('otaProgressActive');
-      const statusText   = document.getElementById('otaStatusText');
-      const percentText  = document.getElementById('otaProgressPercent');
-      const progressBar  = document.getElementById('otaProgressBar');
-      const completeMsg  = document.getElementById('otaCompleteMsg');
-      const btn          = document.getElementById('startOtaBtn');
+      const container = document.getElementById('otaProgressContainer');
+      const activeRow = document.getElementById('otaProgressActive');
+      const statusText = document.getElementById('otaStatusText');
+      const percentText = document.getElementById('otaProgressPercent');
+      const progressBar = document.getElementById('otaProgressBar');
+      const completeMsg = document.getElementById('otaCompleteMsg');
+      const btn = document.getElementById('startOtaBtn');
 
       document.getElementById('otaSameFirmwareWarning')?.classList.add('hidden');
       container.classList.remove('hidden');
-      if (activeRow)    activeRow.classList.remove('hidden');
-      if (completeMsg)  completeMsg.classList.add('hidden');
+      if (activeRow) activeRow.classList.remove('hidden');
+      if (completeMsg) completeMsg.classList.add('hidden');
       btn.disabled = true;
       btn.classList.add('opacity-50', 'cursor-not-allowed');
 
@@ -8830,7 +9803,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       try {
         statusText.innerText = 'Connecting to MIGO OTA Service…';
         const otaService = await activeMigo.server.getPrimaryService(otaServiceUuid);
-        const otaChar    = await otaService.getCharacteristic(otaCharUuid);
+        const otaChar = await otaService.getCharacteristic(otaCharUuid);
 
         const totalBytes = bytes.length;
         statusText.innerText = `Starting OTA update (${Math.round(totalBytes / 1024)} KB)…`;
@@ -8843,7 +9816,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         // (after the delay so the ESP32 has switched to OTA receive mode)
         await _sendOtaOledUpdate(activeMigo, 0, 'Updating...');
         lastOledPct = 0;
-        percentText.innerText   = '0%';
+        percentText.innerText = '0%';
         progressBar.style.width = '0%';
 
         // 2. Stream 512-byte chunks
@@ -8852,29 +9825,29 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           const chunk = bytes.subarray(i, i + chunkSize);
           await otaChar.writeValue(chunk);
           const progress = Math.min(100, Math.round(((i + chunk.length) / totalBytes) * 100));
-          percentText.innerText    = `${progress}%`;
-          progressBar.style.width  = `${progress}%`;
-          statusText.innerText     = `Flashing: ${Math.round((i + chunk.length) / 1024)} / ${Math.round(totalBytes / 1024)} KB`;
+          percentText.innerText = `${progress}%`;
+          progressBar.style.width = `${progress}%`;
+          statusText.innerText = `Flashing: ${Math.round((i + chunk.length) / 1024)} / ${Math.round(totalBytes / 1024)} KB`;
 
           // Update OLED every 10% milestone to avoid overwhelming BLE (skip at 100% so we don't race reboot)
           const milestone = Math.floor(progress / 10) * 10;
           if (milestone >= lastOledPct + 10 && milestone < 100) {
             lastOledPct = milestone;
-            try { await _sendOtaOledUpdate(activeMigo, milestone, 'Updating...'); } catch (e) {}
+            try { await _sendOtaOledUpdate(activeMigo, milestone, 'Updating...'); } catch (e) { }
           }
         }
 
         // 3. Success — store fingerprint in localStorage
-        const crc    = computeCRC32(bytes);
+        const crc = computeCRC32(bytes);
         const sizeKb = Math.round(totalBytes / 1024);
-        const date   = new Date().toLocaleString();
+        const date = new Date().toLocaleString();
         localStorage.setItem('migo_ota_last_flash', JSON.stringify({ crc, sizeKb, date }));
 
         // Update UI: swap progress bar for success banner
-        percentText.innerText   = '100%';
+        percentText.innerText = '100%';
         progressBar.style.width = '100%';
-        statusText.innerText    = 'OTA Complete! MIGO is restarting…';
-        if (activeRow)   activeRow.classList.add('hidden');
+        statusText.innerText = 'OTA Complete! MIGO is restarting…';
+        if (activeRow) activeRow.classList.add('hidden');
         if (completeMsg) completeMsg.classList.remove('hidden');
         refreshOtaLastFlashedBadge();
         refreshOtaVersionStatus();
@@ -8928,7 +9901,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
             const { crc } = JSON.parse(stored);
             crcLabel = `CRC: ${crc.substring(0, 6).toUpperCase()}`;
             subStr = `${migo.connectedVersion || 'v7.0'} · ${robotName}`;
-          } catch(e) {}
+          } catch (e) { }
         }
         connText.innerHTML = `<span class="text-teal-300 font-bold text-[11px] block truncate">${crcLabel}</span><span class="text-[9px] text-white/40 font-normal block truncate">${subStr}</span>`;
         if (typeof syncMigoTimeOverBLE === 'function') {
@@ -8961,7 +9934,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       const targetUrl = (input && input.value.trim()) ? input.value.trim() : OFFICIAL_FIRMWARE_URL;
 
       try {
-        let urlStrategies = [ targetUrl ];
+        let urlStrategies = [targetUrl];
         if (targetUrl.includes('github.com')) {
           const rawMatch = targetUrl.match(/github\.com\/([^/]+)\/([^/]+)\/raw\/(.+)$/);
           if (rawMatch) {
@@ -8977,7 +9950,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           try {
             const r = await fetch(u);
             if (r.ok) { resp = r; break; }
-          } catch(e) {}
+          } catch (e) { }
         }
 
         if (!resp) throw new Error('Could not reach firmware release server');
@@ -8994,7 +9967,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         const stored = localStorage.getItem('migo_ota_last_flash');
         let localCRC = '';
         if (stored) {
-          try { localCRC = JSON.parse(stored).crc.substring(0, 6).toUpperCase(); } catch(e){}
+          try { localCRC = JSON.parse(stored).crc.substring(0, 6).toUpperCase(); } catch (e) { }
         }
 
         const activeMigos = (typeof connectedMigos !== 'undefined' ? connectedMigos : []).filter(m => m.active || (m.server && m.server.connected));
@@ -9042,7 +10015,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           }
         }
 
-      } catch(err) {
+      } catch (err) {
         if (badge) {
           badge.className = 'text-[9px] px-2 py-0.5 rounded-full font-bold bg-red-500/20 text-red-300 border border-red-500/40';
           badge.textContent = 'Check Failed';
@@ -9060,10 +10033,10 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     const OFFICIAL_FIRMWARE_URL = 'https://github.com/rionmartin99/MIGObyRION.github.io/raw/refs/heads/main/MIGOESP.ino.bin';
 
     async function startOtaUpdateFromGoogleDrive(forceFlash = false) {
-      const input   = document.getElementById('otaDriveLinkInput');
+      const input = document.getElementById('otaDriveLinkInput');
       const warning = document.getElementById('otaSameFirmwareWarning');
-      const detail  = document.getElementById('otaSameWarningDetail');
-      const btn     = document.getElementById('startOtaBtn');
+      const detail = document.getElementById('otaSameWarningDetail');
+      const btn = document.getElementById('startOtaBtn');
 
       let rawInput = input ? input.value.trim() : '';
       if (!rawInput) {
@@ -9103,7 +10076,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           ];
         } else if (rawInput.includes('github.com')) {
           // GitHub URLs — attempt direct fetch, then raw.githubusercontent.com & GitHub Pages fallbacks
-          urlStrategies = [ rawInput ];
+          urlStrategies = [rawInput];
 
           // Match github.com/{owner}/{repo}/raw/{path}
           const rawMatch = rawInput.match(/github\.com\/([^/]+)\/([^/]+)\/raw\/(.+)$/);
@@ -9130,7 +10103,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           }
         } else {
           // Direct HTTP(S) link
-          urlStrategies = [ rawInput ];
+          urlStrategies = [rawInput];
         }
       } else {
         // Plain Google Drive File ID
@@ -9144,18 +10117,18 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         btn.disabled = true;
         btn.classList.add('opacity-50', 'cursor-not-allowed');
 
-        const container   = document.getElementById('otaProgressContainer');
-        const statusText  = document.getElementById('otaStatusText');
+        const container = document.getElementById('otaProgressContainer');
+        const statusText = document.getElementById('otaStatusText');
         const percentText = document.getElementById('otaProgressPercent');
         const progressBar = document.getElementById('otaProgressBar');
         container.classList.remove('hidden');
-        statusText.innerText   = 'Downloading firmware…';
-        percentText.innerText  = '0%';
+        statusText.innerText = 'Downloading firmware…';
+        percentText.innerText = '0%';
         progressBar.style.width = '0%';
         document.getElementById('otaCorsErrorPanel')?.classList.add('hidden');
 
         let response = null;
-        let lastErr  = null;
+        let lastErr = null;
         for (const url of urlStrategies) {
           try {
             statusText.innerText = `Trying download URL…`;
@@ -9170,7 +10143,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         if (!response) {
           // Both URLs failed — almost certainly a CORS block
           const isCors = lastErr?.message?.toLowerCase().includes('fetch') ||
-                         lastErr?.name === 'TypeError';
+            lastErr?.name === 'TypeError';
           container.classList.add('hidden');
           const corsPanel = document.getElementById('otaCorsErrorPanel');
           if (corsPanel) corsPanel.classList.remove('hidden');
@@ -9180,7 +10153,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         }
 
         const buffer = await response.arrayBuffer();
-        const bytes  = new Uint8Array(buffer);
+        const bytes = new Uint8Array(buffer);
 
         // Detect if Google returned an HTML page (e.g. virus-scan confirmation) instead of binary
         const headerSniff = bytes.length > 15
@@ -9201,13 +10174,13 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         // ── Hash + URL check ──────────────────────────────────────────────
         // Compute CRC before flashing — detect identical binaries even if URL changed.
         if (!forceFlash) {
-          const newCRC    = computeCRC32(bytes);
-          const sizeKb    = Math.round(bytes.length / 1024);
-          const stored    = localStorage.getItem('migo_ota_last_flash');
+          const newCRC = computeCRC32(bytes);
+          const sizeKb = Math.round(bytes.length / 1024);
+          const stored = localStorage.getItem('migo_ota_last_flash');
           const storedUrl = localStorage.getItem('migo_ota_last_url') || '';
 
           let sameDetected = false;
-          let sameReason   = '';
+          let sameReason = '';
 
           // Primary: exact binary match via CRC32
           if (stored) {
@@ -9225,7 +10198,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
             container.classList.add('hidden');
             const titleEl = document.getElementById('otaWarningTitle');
             if (titleEl) titleEl.textContent = 'Same Firmware Detected!';
-            if (detail)  detail.textContent = sameReason;
+            if (detail) detail.textContent = sameReason;
             if (warning) {
               warning.classList.remove('hidden');
               const forceBtn = document.getElementById('otaForceFlashBtn');
@@ -9283,7 +10256,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     // ─── Obstacle Guard Toggle ────────────────────────────────────────────
     function applyObstacleGuardUI() {
       // ── Sidebar mini-toggle (Explorer / Inventor panel) ──────────────
-      const track  = document.getElementById('obstacleGuardTrack');
+      const track = document.getElementById('obstacleGuardTrack');
       const status = document.getElementById('obstacleGuardStatus');
       if (track) {
         if (obstacleGuardEnabled) {
@@ -9299,8 +10272,8 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       }
 
       // ── Settings modal toggle ─────────────────────────────────────────
-      const settingsBtn   = document.getElementById('settingsObstacleGuardToggle');
-      const settingsKnob  = document.getElementById('settingsObstacleGuardKnob');
+      const settingsBtn = document.getElementById('settingsObstacleGuardToggle');
+      const settingsKnob = document.getElementById('settingsObstacleGuardKnob');
       const settingsLabel = document.getElementById('settingsObstacleGuardLabel');
       if (settingsBtn) {
         if (obstacleGuardEnabled) {
@@ -9416,6 +10389,15 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       }
     }
 
+    function updateAiCodeTimeout(val, silent = false) {
+      v5Settings.aiCodeTimeoutMins = parseInt(val) || 60;
+      const disp = document.getElementById('aiCodeTimeoutDisplay');
+      if (disp) disp.textContent = `${v5Settings.aiCodeTimeoutMins} min`;
+      if (!silent) {
+        saveV5Settings();
+      }
+    }
+
     // ─── OLED Simulated Sleep & Screen Wake Lock Handlers ─────────────────
     function resetInactivityTimer() {
       if (isSimulatedSleeping) return;
@@ -9494,7 +10476,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         wakeLockObj.release().then(() => {
           wakeLockObj = null;
           console.log('[Power] Screen Wake Lock released.');
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }
 
@@ -9720,11 +10702,11 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     function startMigoTimer(seconds) {
       if (!seconds || seconds <= 0) return;
       migoTimerSecondsLeft = seconds;
-      
+
       // Send BLE command to MIGO ESP32 firmware
       sendCmd(`CMD:TIMER:${seconds}`);
 
-      const hrs  = Math.floor(seconds / 3600);
+      const hrs = Math.floor(seconds / 3600);
       const mins = Math.floor((seconds % 3600) / 60);
       const secs = seconds % 60;
 
@@ -9736,7 +10718,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       } else {
         timeLabel = `${secs}s`;
       }
-      
+
       if (typeof appendAionaMessage === 'function') {
         appendAionaMessage('aiona', `⏱️ Alarm / Countdown timer set for **${timeLabel}**! MIGO's OLED screen will display the live countdown.`);
       }
@@ -9773,7 +10755,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       if (activeMigos.length === 0) {
         console.warn("[Alarm] BLE disconnected during timer. Attempting reconnect...");
         if (typeof connectBLE === 'function') {
-          try { await connectBLE(); } catch(e) { console.error("[Alarm] Reconnect failed:", e); }
+          try { await connectBLE(); } catch (e) { console.error("[Alarm] Reconnect failed:", e); }
         }
       }
 
@@ -10096,6 +11078,11 @@ Choose the tag that best represents the tone of your text. Do not include any ot
     }
 
     function handleAionaObstacleDetected(dist) {
+      // If a Super AIONA dynamic self-coding task is active, bypass automatic emergency stop banner & chat spam
+      if (window.SuperAIONATaskEngine && window.SuperAIONATaskEngine.activeTask) {
+        return;
+      }
+
       // Stop any AIONA movement sequence
       if (currentAionaSequenceAbort) currentAionaSequenceAbort();
       sendCmd('CMD:DIR:S');
@@ -10395,8 +11382,10 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       // Strip orphaned lone bracket characters at end of lines / end of text
       cleanText = cleanText.replace(/[ \t]*[\[\]{}][ \t]*(\n|$)/gm, "$1");
       cleanText = cleanText.replace(/[ \t]*[\[\]{}][ \t]*$/g, "");
-      // Strip any remaining partial aiona tag fragments (e.g. "<aiona-" mid-stream)
-      cleanText = cleanText.replace(/<\/?aiona[^>]*>?/gi, "");
+      // ✅ FIX: Strip ONLY aiona-commands fragments, NOT super-aiona-script (which must survive until appendAionaMessage)
+      cleanText = cleanText.replace(/<\/?aiona-commands[^>]*>?/gi, "");
+      cleanText = cleanText.replace(/<\/?aiona_commands[^>]*>?/gi, "");
+      cleanText = cleanText.replace(/<\/?migo-commands[^>]*>?/gi, "");
 
       // 5. Graceful sentence trimmer — if the model placed the command tag mid-clause,
       //    the cleaned text may end without terminal punctuation. Trim to the last
@@ -10435,7 +11424,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       window.aionaSendMessageText(text);
     };
 
-    window.aionaSendMessageText = async function (text) {
+    window.aionaSendMessageText = async function (text, isAutoCorrection = false) {
       const apiKey = localStorage.getItem('migo_gemini_api_key');
       if (!apiKey) {
         alert("AIONA requires a Gemini API Key. Please enter it in the Chat setup screen first!");
@@ -10444,9 +11433,18 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         return;
       }
 
+      if (!isAutoCorrection && window.SuperAIONATaskEngine) {
+        window.SuperAIONATaskEngine.retryCount = 0; // Reset retry count for manual user input
+      }
+
       if (currentAionaSequenceAbort) { currentAionaSequenceAbort(); currentAionaSequenceAbort = null; }
 
-      appendAionaMessage('user', text);
+      if (!isAutoCorrection) {
+        appendAionaMessage('user', text);
+      } else {
+        SuperAIONATaskEngine.log("Transmitting error logs to AI brain...", "system");
+      }
+
       setAionaState('thinking');
       sendCmd('CMD:FACE:GRIN');
       aionaDoThinkingPhysicalReactions();
@@ -10465,6 +11463,9 @@ Your physical form is the MIGO robot body. You are completely aware of having th
 Your personality is conversational, insightful, warm, and natural. Speak like a close, caring friend.
 
 ${personalityAddition}
+
+SUPER AIONA DYNAMIC SELF-CODING MODE (MANDATORY RULE):
+Whenever the user asks you to "code yourself to...", "write a code to...", "program yourself to...", "code a task...", "make yourself...", "make it...", or requests ANY movement, looping, sensor-triggered, timed, or physical behavior (e.g. "move forward for 3 seconds", "dance", "spin", "spin until object detected", "show MARCO and say POLO when hand at 15cm", "play a melody", "control a light", "do a 360"), you MUST NOT give plain text excuses or refuse! You MUST output valid transient JavaScript code wrapped in <super-aiona-script>...</super-aiona-script> AND equivalent Arduino C++ code wrapped in <super-aiona-cpp>...</super-aiona-cpp> at the end of your response! NEVER respond to movement/coding requests with only text — always generate the script.
 
 REAL-TIME SENSOR TELEMETRY:
 - Ultrasonic Distance Sensor (Front): ${currentDistStr}
@@ -10516,6 +11517,219 @@ Supported JSON command schema:
 - {"action":"pin_mode", "pin": 0-39, "mode": "IN"|"OUT"}
 - {"action":"digital_write", "pin": 0-39, "val": 0|1}
 - {"action":"analog_write", "pin": 0-39, "val": 0-255}
+
+SUPER AIONA DYNAMIC SELF-CODING MODE (MANDATORY RULE):
+Whenever the user asks you to "code yourself to...", "write a code to...", "program yourself to...", "code a task...", "make yourself...", "make it...", or requests ANY movement, looping, sensor-triggered, timed, or physical behavior (e.g. "move forward for 3 seconds", "dance", "spin", "spin until object detected", "show MARCO and say POLO when hand at 15cm", "play a melody", "control a light", "do a 360"), you MUST NOT give plain text excuses or refuse! You MUST output valid transient JavaScript code wrapped in <super-aiona-script>...</super-aiona-script> AND equivalent Arduino C++ code wrapped in <super-aiona-cpp>...</super-aiona-cpp> at the end of your response! NEVER respond to movement/coding requests with only text — always generate the script.
+
+IMPORTANT CODING RULE: You MUST ONLY use the EXACT method names listed in the API below. NEVER guess or invent method names. The ONLY valid object is \`migo\`. For example, do NOT write \`migo.pinNode()\`, \`migo.writePWM()\`, \`migo.digitalWrite()\` as plain calls — all methods must be awaited: \`await migo.digitalWrite(14, 1)\`.
+
+COMPLETE migo API (Super AIONA Script Sandbox):
+
+// ━━ MOTORS (speed: 0-255, durationMs: milliseconds) ━━━━━━━━━━━━━━━━━━━━━━━━
+await migo.moveForward(speed, durationMs)    // e.g. await migo.moveForward(150, 1000)
+await migo.moveBackward(speed, durationMs)   // e.g. await migo.moveBackward(150, 1000)
+await migo.turnLeft(speed, durationMs)       // e.g. await migo.turnLeft(150, 800)
+await migo.turnRight(speed, durationMs)      // e.g. await migo.turnRight(150, 800)
+await migo.stopMotors()                      // immediately stop all wheel movement
+
+// ━━ OLED DISPLAY (128x64 SSD1306, x:0-120, y:0-50, size:1-3) ━━━━━━━━━━━━━━
+await migo.printOled(text, x, y, size)       // SHORTCUT: auto init+clear+print+show in one call
+                                             // e.g. await migo.printOled("HELLO", 10, 20, 2)
+await migo.oledInit(sda, scl)               // initialize OLED (default: sda=21, scl=22)
+await migo.oledClear()                       // clear all OLED pixels
+await migo.oledPrint(text, x, y, size)      // draw text at position (call oledShow after)
+await migo.oledShow()                        // flush buffer to screen (always call after oledPrint)
+
+// ━━ FACE EXPRESSIONS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+await migo.sendFace(expression)              // expression: "SMILE" | "GRIN" | "TALK" | "IDLE"
+
+// ━━ SERVO / ARM (angle: 0-100 = % of sweep range) ━━━━━━━━━━━━━━━━━━━━━━━━━━
+// pin: 14 = Plug D (default arm), pin: 32 = Plug C
+await migo.setServoAngle(angle, pin)         // e.g. await migo.setServoAngle(50, 14)
+
+// ━━ BUZZER / TONE (freq: Hz, duration: ms) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// pin: 14 = Plug D (default), pin: 32 = Plug C
+await migo.playTone(freq, durationMs, pin)   // e.g. await migo.playTone(1000, 500, 14)
+
+// ━━ LED ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+await migo.setLed(state)                     // state: true/'on'/1 = ON, false/'off'/0 = OFF
+
+// ━━ GPIO PIN CONTROL (ESP32 pins 0-39) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Common plug pins: Plug D=14, Plug C=32, Plug A=34, Plug B=35
+await migo.pinMode(pin, mode)                // mode: 'IN' or 'OUT'  e.g. await migo.pinMode(14, 'OUT')
+await migo.digitalWrite(pin, val)            // val: 1/'HIGH' or 0/'LOW'  e.g. await migo.digitalWrite(14, 1)
+await migo.analogWrite(pin, val)             // PWM 0-255  e.g. await migo.analogWrite(14, 128)
+
+// ━━ SENSOR READINGS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+migo.getUltrasonicDistance()                 // returns cm (number). 999 = no object in range
+migo.getAnalogPort(port)                     // port: 'A' | 'B' | 'C'  returns 0-4095 (ADC 12-bit)
+
+// ━━ SPEECH (browser TTS) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+await migo.speak(text)                       // e.g. await migo.speak("Hello!")
+
+// ━━ TIMING & DEBUGGING ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+await migo.wait(ms)                          // pause execution  e.g. await migo.wait(1000)
+log("message")                               // print to terminal console (not migo.log!)
+
+Coding Rules for <super-aiona-script> & <super-aiona-cpp>:
+1. ALWAYS output BOTH <super-aiona-script> (for JS execution) and <super-aiona-cpp> (for C++ display).
+2. NEVER use method names not in the list above for JS.
+3. For multi-line OLED: oledInit → oledClear → multiple oledPrint at different y positions → oledShow.
+4. Polling sensor loops: always include \`await migo.wait(100)\` inside the while loop to avoid freezing.
+5. The script has a 120-second max runtime. Always include exit conditions in loops.
+6. Use \`log()\` generously to show progress in the terminal console.
+
+Example 1 - Marco Polo game (OLED + Ultrasonic):
+"Coding it now! Watch the AI Code Engine terminal! 
+<super-aiona-script>
+log("Marco Polo starting...");
+await migo.printOled("MARCO", 20, 24, 2);
+await migo.sendFace("GRIN");
+for (let i = 1; i <= 3; i++) {
+  log("Waiting for hand " + i + "/3...");
+  while (true) {
+    let dist = migo.getUltrasonicDistance();
+    if (dist > 0 && dist <= 15) {
+      log("Hand at " + dist + "cm!");
+      await migo.speak("POLO");
+      await migo.wait(1000);
+      break;
+    }
+    await migo.wait(100);
+  }
+}
+log("Done!");
+</super-aiona-script>
+<super-aiona-cpp>
+void setup() {
+  Serial.begin(115200);
+  oledInit();
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+}
+void loop() {
+  Serial.println("Marco Polo starting...");
+  printOled("MARCO", 20, 24, 2);
+  for (int i = 1; i <= 3; i++) {
+    while (true) {
+      int dist = getUltrasonicDistance();
+      if (dist > 0 && dist <= 15) {
+        Serial.println("Hand at " + String(dist) + "cm!");
+        delay(1000);
+        break;
+      }
+      delay(100);
+    }
+  }
+}
+</super-aiona-cpp> [EMOTION:EXCITED]"
+
+Example 2 - Spin until object detected < 30cm:
+"On it! 
+<super-aiona-script>
+log("Spinning, watching for object < 30cm...");
+await migo.sendFace("GRIN");
+while (true) {
+  let dist = migo.getUltrasonicDistance();
+  if (dist > 0 && dist < 30) {
+    log("Object at " + dist + "cm! Stopping.");
+    await migo.stopMotors();
+    await migo.sendFace("SMILE");
+    await migo.speak("Object detected!");
+    break;
+  }
+  await migo.turnLeft(120, 200);
+  await migo.wait(50);
+}
+</super-aiona-script>
+<super-aiona-cpp>
+void setup() {
+  Serial.begin(115200);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(MOTOR_L_PIN, OUTPUT);
+  pinMode(MOTOR_R_PIN, OUTPUT);
+}
+void loop() {
+  while (true) {
+    int dist = getUltrasonicDistance();
+    if (dist > 0 && dist < 30) {
+      stopMotors();
+      break;
+    }
+    turnLeft(120, 200);
+    delay(50);
+  }
+}
+</super-aiona-cpp> [EMOTION:EXCITED]"
+
+Example 3 - Play a melody on buzzer:
+"Playing a melody! <super-aiona-script>
+log("Playing melody...");
+const notes = [[523,300],[587,300],[659,300],[698,300],[784,500]];
+for (let [freq, dur] of notes) {
+  await migo.playTone(freq, dur, 14);
+  await migo.wait(50);
+}
+log("Melody done!");
+</super-aiona-script>
+<super-aiona-cpp>
+void setup() {
+  Serial.begin(115200);
+  pinMode(BUZZER_PIN, OUTPUT);
+}
+void loop() {
+  Serial.println("Playing melody...");
+  int notes[][2] = {{523,300},{587,300},{659,300},{698,300},{784,500}};
+  for (int i = 0; i < 5; i++) {
+    playTone(notes[i][0], notes[i][1]);
+    delay(50);
+  }
+  Serial.println("Melody done!");
+}
+</super-aiona-cpp> [EMOTION:HAPPY]"
+
+Example 4 - Control LED/GPIO pin based on analog sensor:
+"On it! <super-aiona-script>
+log("Reading analog port A and controlling LED...");
+await migo.pinMode(14, 'OUT');
+for (let i = 0; i < 20; i++) {
+  let val = migo.getAnalogPort('A');
+  log("Port A reading: " + val);
+  if (val > 2000) {
+    await migo.setLed(true);
+    await migo.digitalWrite(14, 1);
+  } else {
+    await migo.setLed(false);
+    await migo.digitalWrite(14, 0);
+  }
+  await migo.wait(500);
+}
+log("Done!");
+</super-aiona-script>
+<super-aiona-cpp>
+void setup() {
+  Serial.begin(115200);
+  pinMode(PORT_A_PIN, INPUT);
+  pinMode(14, OUTPUT);
+}
+void loop() {
+  Serial.println("Reading analog port A and controlling LED...");
+  for (int i = 0; i < 20; i++) {
+    int val = getAnalogPort('A');
+    Serial.println("Port A reading: " + String(val));
+    if (val > 2000) {
+      setLed(true);
+      digitalWrite(14, HIGH);
+    } else {
+      setLed(false);
+      digitalWrite(14, LOW);
+    }
+    delay(500);
+  }
+  Serial.println("Done!");
+}
+</super-aiona-cpp> [EMOTION:HAPPY]"
 
 EMOTION TAG:
 At the very end of your response, you MUST append one of these emotion tags:
@@ -10578,8 +11792,13 @@ Choose the tag that best represents the tone of your text. Do not include any ot
               cleanStreaming = cleanStreaming.replace(/<\/?(aiona-commands|aiona_commands|aiona-command|aionacommands|migo-commands)\b[^>]*?>?/gi, "");
               cleanStreaming = cleanStreaming.replace(/\[\s*\]/g, "");
               cleanStreaming = cleanStreaming.replace(/\{\s*\}/g, "");
-              // Kill any partial <aiona... opener and everything after it (mid-stream partial tag generation)
-              cleanStreaming = cleanStreaming.replace(/<\/?aiona[\s\S]*$/gi, "");
+              // ✅ FIX Bug#1: Use SPECIFIC super-aiona-script strippers during streaming preview.
+              //    Old line was: /<\/?aiona[\s\S]*$/gi  — this wildcard matched <super-aiona-script> and
+              //    wiped everything from that tag to end-of-string, so finalText callback never received the tag.
+              cleanStreaming = cleanStreaming.replace(/<super-aiona-script>[\s\S]*?<\/super-aiona-script>/gi, "");
+              cleanStreaming = cleanStreaming.replace(/<super-aiona-script>[\s\S]*$/gi, "");
+              cleanStreaming = cleanStreaming.replace(/<super-aiona-cpp>[\s\S]*?<\/super-aiona-cpp>/gi, "");
+              cleanStreaming = cleanStreaming.replace(/<super-aiona-cpp>[\s\S]*$/gi, "");
               // Strip orphaned lone bracket characters at end of lines
               cleanStreaming = cleanStreaming.replace(/[ \t]*[\[\]{}][ \t]*(\n|$)/gm, "$1");
               cleanStreaming = cleanStreaming.replace(/[ \t]*[\[\]{}][ \t]*$/g, "");
@@ -10591,7 +11810,40 @@ Choose the tag that best represents the tone of your text. Do not include any ot
             if (aionaStreamBubble.parentNode) aionaStreamBubble.remove();
 
             let emotion = 'HAPPY';
-            let cleanResponse = finalText.trim();
+            let fullResponse = finalText.trim();
+
+            // ✅ FIX STEP 1: Extract and execute <super-aiona-script> FIRST, before any cleaning strips it
+            let extractedSuperCode = null;
+            let extractedCppCode = null;
+            const superScriptTagMatch = fullResponse.match(/<super-aiona-script>([\s\S]*?)(?:<\/super-aiona-script>|$)/i);
+            const superCppTagMatch = fullResponse.match(/<super-aiona-cpp>([\s\S]*?)(?:<\/super-aiona-cpp>|$)/i);
+
+            if (superScriptTagMatch) {
+              extractedSuperCode = superScriptTagMatch[1].trim();
+            }
+            if (superCppTagMatch) {
+              extractedCppCode = superCppTagMatch[1].trim();
+            } else {
+              extractedCppCode = extractedSuperCode; // fallback
+            }
+
+            // Strip tags from response text so they don't appear in the chat bubble
+            fullResponse = fullResponse.replace(/<super-aiona-script>[\s\S]*?(?:<\/super-aiona-script>|$)/gi, "").trim();
+            fullResponse = fullResponse.replace(/<super-aiona-cpp>[\s\S]*?(?:<\/super-aiona-cpp>|$)/gi, "").trim();
+
+            // Launch Super AIONA task immediately if JS code is present
+            if (extractedSuperCode && window.SuperAIONATaskEngine) {
+              const display = document.getElementById("superAionaCodeDisplay");
+              if (display) {
+                if (display.tagName === 'TEXTAREA' || display.tagName === 'INPUT') display.value = extractedCppCode;
+                else display.innerText = extractedCppCode;
+              }
+              SuperAIONATaskEngine.currentCode = extractedSuperCode;
+              SuperAIONATaskEngine.log("AI generated dynamic task script detected! Auto-executing...", "system");
+              SuperAIONATaskEngine.executeDynamicTask(extractedSuperCode);
+            }
+
+            let cleanResponse = fullResponse;
             const emotionMatch = cleanResponse.match(/\[EMOTION:(HAPPY|CALM|EXCITED|THINKING)\]/i);
             if (emotionMatch) {
               emotion = emotionMatch[1].toUpperCase();
@@ -10612,7 +11864,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
             // Check for Timer Intent in user prompt (e.g. "set a timer for 3 minutes", "countdown 5 mins")
             const timerMatch = text.match(/(?:timer|countdown|alarm)\s+(?:for\s+)?(\d+)\s*(min|minute|sec|second|hr|hour)?/i) ||
-                               text.match(/(\d+)\s*(min|minute|sec|second)\s+(?:timer|countdown)/i);
+              text.match(/(\d+)\s*(min|minute|sec|second)\s+(?:timer|countdown)/i);
             if (timerMatch) {
               let val = parseInt(timerMatch[1]);
               let unit = (timerMatch[2] || 'min').toLowerCase();
@@ -10622,8 +11874,9 @@ Choose the tag that best represents the tone of your text. Do not include any ot
               startMigoTimer(seconds);
             }
 
+            const modelHistoryText = extractedSuperCode ? `${cleanResponse}\n<super-aiona-script>\n${extractedSuperCode}\n</super-aiona-script>` : cleanResponse;
             chatHistory.push({ role: 'user', text: text });
-            chatHistory.push({ role: 'model', text: cleanResponse });
+            chatHistory.push({ role: 'model', text: modelHistoryText });
             if (chatHistory.length > 8) chatHistory.splice(0, 2);
 
             appendAionaMessage('aiona', cleanResponse);
@@ -11301,18 +12554,18 @@ Now give your response as ${migoName}. Jump straight into the discussion — no 
               finishTurn();
             }, Math.min(maxAllowedTime, 120000));
 
-          // Schedule timer-based speech gestures for expressive, lively motor movements in Conversation Mode
-          let convDelayOffset = 0;
-          wordsWithMetadata.forEach((w) => {
-            setTimeout(() => {
-              if (convModeActive && !convModeAborted && window['_convUtteranceQueue_' + idx]?.length > 0) {
-                triggerWordGestureToMigo(migo, idx, w.word, w.punctuation);
-              }
-            }, convDelayOffset);
-            convDelayOffset += 330;
-          });
+            // Schedule timer-based speech gestures for expressive, lively motor movements in Conversation Mode
+            let convDelayOffset = 0;
+            wordsWithMetadata.forEach((w) => {
+              setTimeout(() => {
+                if (convModeActive && !convModeAborted && window['_convUtteranceQueue_' + idx]?.length > 0) {
+                  triggerWordGestureToMigo(migo, idx, w.word, w.punctuation);
+                }
+              }, convDelayOffset);
+              convDelayOffset += 330;
+            });
 
-          function speakNextConvChunk() {
+            function speakNextConvChunk() {
               if (chunkIndex >= chunks.length || convModeAborted || !convModeActive) {
                 finishTurn();
                 return;
