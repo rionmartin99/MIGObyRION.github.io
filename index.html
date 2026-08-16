@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 7.6.7
+  MIGO Web Controller | Version: 7.6.8
   Change Log:
+  [Aug 16, 2026 11:15 PM] Fix: Fixed STT voice echo/word repetition with intelligent transcript deduplication, enforced Landing Idle Animations OFF setting in random scanning loop, and ensured AIONA mode fully respects disabled Obstacle Guard setting.
   [Aug 16, 2026 10:45 PM] Fix: Restored real-time "Updating... n%" OLED status display & progress streaming during wireless OTA firmware flashing.
   [Aug 16, 2026 10:10 PM] Fix & New Feature: Restored ultrasonic hand-swipe time/date trigger on Landing Page by keeping CMD:LANDING:1 active; added downloaded firmware binary memory caching, 3-attempt automated OTA retry protocol, and flash progress resume feature.
   [Aug 09, 2026 10:22 PM] Fix: Robot Landing Idle Animations setting (OFF) now truly stops firmware animations. Both sendLandingStateToMigo and keepAliveMotorSilence were sending CMD:LANDING:1 (which triggers firmware's autonomous loop) even when animations were disabled. Fixed to send CMD:LANDING:0 when setting is OFF.
   [Aug 09, 2026 10:15 PM] UI: Improved AIONA header and chat bar responsiveness. Toggle buttons now group into a centered pill container on mobile; input/send row gets full-width. Settings header now stacks symmetrically on mobile.
-  [Aug 09, 2026 3:28 PM] Fix: Restored the 'Live Code Editor & Terminal' panel in the AI Code Engine modal. C++ code viewer, elapsed timer, and Run Code button are fully functional again.
 -->
 
 <!DOCTYPE html>
@@ -3597,6 +3597,8 @@
       idleScanningInterval = setInterval(() => {
         // Do not perform idle movements while OTA firmware update is in progress
         if (isOtaActive) return;
+        // Strictly comply with user setting: suppress idle movements and servo sweeps when landing idle animation is OFF
+        if (typeof v5Settings !== 'undefined' && v5Settings.landingIdleAnim === false) return;
         const landingPage = document.getElementById('landingPage');
         // STRICT GUARD: Idle movement ONLY executes on the Landing Page!
         if (myCharacteristic && landingPage && !landingPage.classList.contains('hidden')) {
@@ -6382,6 +6384,29 @@ ${JSON.stringify(workspaceState, null, 2)}
     }
 
     // --- STT (Speech-to-Text) ---
+    function sanitizeSTTTranscript(text) {
+      if (!text || typeof text !== 'string') return "";
+      let clean = text.trim();
+      if (!clean) return "";
+
+      // 1. Collapse multiple whitespace to single space
+      clean = clean.replace(/\s+/g, ' ');
+
+      // 2. Remove consecutive identical duplicate words (case-insensitive) e.g. "robot robot" -> "robot"
+      clean = clean.replace(/\b([a-zA-Z0-9_]+)(?:[\s,]+\1\b)+/gi, '$1');
+
+      // 3. Remove consecutive repeated phrases/n-grams up to 6 words long
+      // e.g. "move forward move forward" -> "move forward", "what time is it what time is it" -> "what time is it"
+      for (let len = 6; len >= 2; len--) {
+        try {
+          const pattern = new RegExp(`\\b((?:[a-zA-Z0-9_]+[\\s,]+){${len - 1}}[a-zA-Z0-9_]+)(?:[\\s,]+\\1)+\\b`, 'gi');
+          clean = clean.replace(pattern, '$1');
+        } catch (e) { }
+      }
+
+      return clean.trim();
+    }
+
     function initSTT() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) return;
@@ -6394,13 +6419,16 @@ ${JSON.stringify(workspaceState, null, 2)}
       recognition.onstart = () => { isListening = true; updateMicButton(); };
 
       recognition.onresult = (e) => {
-        let transcript = "";
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          if (e.results[i].isFinal) transcript += e.results[i][0].transcript;
+        let fullTranscript = "";
+        for (let i = 0; i < e.results.length; i++) {
+          if (e.results[i].isFinal) {
+            fullTranscript += (fullTranscript ? " " : "") + e.results[i][0].transcript.trim();
+          }
         }
+        const cleaned = sanitizeSTTTranscript(fullTranscript);
         const input = document.getElementById('chatInput');
-        if (input && transcript) {
-          input.value += (input.value ? ' ' : '') + transcript.trim();
+        if (input && cleaned) {
+          input.value = cleaned;
           adjustChatInputHeight();
         }
       };
@@ -7110,7 +7138,6 @@ ${JSON.stringify(workspaceState, null, 2)}
       if (transcriptEl) transcriptEl.innerText = '"..."';
 
       hasUserSpoken = false;
-      let aionaFinalTranscript = ""; // Accumulates only finalized speech segments
 
       aionaManualRecognition = new SpeechRecognition();
       aionaManualRecognition.continuous = true; // continuous=true lets user pause and think without auto-stopping
@@ -7124,23 +7151,24 @@ ${JSON.stringify(workspaceState, null, 2)}
 
       aionaManualRecognition.onresult = (e) => {
         hasUserSpoken = true;
-        // Only process NEW results starting from e.resultIndex to prevent repetition.
-        // Final results are appended to aionaFinalTranscript; interim results are shown live.
+        // Reconstruct from full e.results array on each event to prevent duplicate phrase accumulation
+        let finalTranscript = "";
         let interimTranscript = "";
-        for (let i = e.resultIndex; i < e.results.length; i++) {
+        for (let i = 0; i < e.results.length; i++) {
           if (e.results[i].isFinal) {
-            aionaFinalTranscript += e.results[i][0].transcript;
+            finalTranscript += (finalTranscript ? " " : "") + e.results[i][0].transcript.trim();
           } else {
-            interimTranscript += e.results[i][0].transcript;
+            interimTranscript += (interimTranscript ? " " : "") + e.results[i][0].transcript.trim();
           }
         }
-        const fullTranscript = aionaFinalTranscript + interimTranscript;
-        if (transcriptEl) transcriptEl.innerText = `"${fullTranscript.trim()}"`;
+        const rawFull = (finalTranscript + " " + interimTranscript).trim();
+        const cleanedFull = sanitizeSTTTranscript(rawFull);
+        if (transcriptEl) transcriptEl.innerText = `"${cleanedFull || '...'}"`;
         resetAionaSilenceTimer(false); // Reset silence timer on every chunk of speech
 
         // Voice Interrupt Safeguard for Active Super Tasks
         if (window.SuperAIONATaskEngine && window.SuperAIONATaskEngine.activeTask) {
-          const lower = fullTranscript.toLowerCase();
+          const lower = cleanedFull.toLowerCase();
           if (lower.includes('stop') || lower.includes('abort') || lower.includes('cancel') || lower.includes('halt')) {
             console.log("[Super AIONA Voice Interrupt] Task cancelled via speech interrupt");
             window.SuperAIONATaskEngine.abortActiveTask("Voice Command Interruption");
@@ -7164,6 +7192,7 @@ ${JSON.stringify(workspaceState, null, 2)}
         if (feedback) feedback.classList.add('hidden');
 
         let spokenPrompt = transcriptEl ? transcriptEl.innerText.replace(/"/g, "").trim() : "";
+        spokenPrompt = sanitizeSTTTranscript(spokenPrompt);
         if (spokenPrompt && spokenPrompt !== "...") {
           aionaSendMessageText(spokenPrompt);
         } else {
@@ -11199,6 +11228,12 @@ await migo.sendFace("SMILE");`;
         const aPage = document.getElementById('aionaPage');
         if (!aPage || aPage.classList.contains('hidden')) return;
 
+        // Strictly comply with user setting: If obstacle guard is disabled, do not trigger obstacle halts or alerts
+        if (typeof obstacleGuardEnabled !== 'undefined' && !obstacleGuardEnabled) {
+          aionaObstacleWarned = false;
+          return;
+        }
+
         if (dist < v5ObstacleThresh && dist < 990 && !aionaObstacleWarned) {
           aionaObstacleWarned = true;
           handleAionaObstacleDetected(dist);
@@ -11241,6 +11276,9 @@ await migo.sendFace("SMILE");`;
     }
 
     function handleAionaObstacleDetected(dist) {
+      // Strictly comply with user setting: If obstacle guard is disabled, do nothing
+      if (typeof obstacleGuardEnabled !== 'undefined' && !obstacleGuardEnabled) return;
+
       // If a Super AIONA dynamic self-coding task is active, bypass automatic emergency stop banner & chat spam
       if (window.SuperAIONATaskEngine && window.SuperAIONATaskEngine.activeTask) {
         return;
