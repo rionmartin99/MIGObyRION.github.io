@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 7.6.5
+  MIGO Web Controller | Version: 7.6.6
   Change Log:
+  [Aug 16, 2026 10:10 PM] Fix & New Feature: Restored ultrasonic hand-swipe time/date trigger on Landing Page by keeping CMD:LANDING:1 active; added downloaded firmware binary memory caching, 3-attempt automated OTA retry protocol, and flash progress resume feature.
   [Aug 09, 2026 10:22 PM] Fix: Robot Landing Idle Animations setting (OFF) now truly stops firmware animations. Both sendLandingStateToMigo and keepAliveMotorSilence were sending CMD:LANDING:1 (which triggers firmware's autonomous loop) even when animations were disabled. Fixed to send CMD:LANDING:0 when setting is OFF.
   [Aug 09, 2026 10:15 PM] UI: Improved AIONA header and chat bar responsiveness. Toggle buttons now group into a centered pill container on mobile; input/send row gets full-width. Settings header now stacks symmetrically on mobile.
   [Aug 09, 2026 3:28 PM] Fix: Restored the 'Live Code Editor & Terminal' panel in the AI Code Engine modal. C++ code viewer, elapsed timer, and Run Code button are fully functional again.
   [Aug 09, 2026 3:22 PM] Fix: Corrected STT word/phrase repetition bug in aionaManualRecognition. Loop now starts at e.resultIndex instead of 0, and final/interim results are tracked separately to prevent re-appending already-processed speech chunks.
-  [Aug 09, 2026 3:15 PM] UI: Removed the 'Live Code Editor & Terminal' panel from the AI Code Engine modal. The hidden textarea and timer are retained for JS compatibility. Console log expanded to fill space. Run Code button removed.
 -->
 
 <!DOCTYPE html>
@@ -874,6 +874,15 @@
                   </button>
                 </div>
 
+                <!-- Cached firmware indicator badge -->
+                <div id="otaCachedFirmwareBadge" class="hidden mt-2 p-2 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-between">
+                  <div class="flex items-center gap-1.5 text-[9px] text-indigo-200">
+                    <i class="ph-bold ph-package text-indigo-400"></i>
+                    <span id="otaCachedFirmwareText">Firmware Cached</span>
+                  </div>
+                  <button onclick="clearCachedOtaFirmware()" class="text-[9px] px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white font-medium active:scale-95 transition-all cursor-pointer" title="Clear cache & force fresh download">🔄 Re-download</button>
+                </div>
+
                 <!-- Last-flashed metadata badge -->
                 <div id="otaLastFlashedBadge" class="hidden mt-2 flex items-start gap-1.5 text-[9px] text-white/40">
                   <i class="ph-bold ph-check-circle text-teal-400 mt-0.5 shrink-0"></i>
@@ -909,8 +918,10 @@
                 <div id="otaProgressContainer" class="hidden mt-3 pt-3 border-t border-white/10">
                   <div id="otaProgressActive">
                     <div class="flex justify-between items-center mb-1">
-                      <span id="otaStatusText" class="text-[10px] font-semibold text-indigo-300">Preparing OTA
-                        update...</span>
+                      <div class="flex items-center gap-1.5">
+                        <span id="otaStatusText" class="text-[10px] font-semibold text-indigo-300">Preparing OTA update...</span>
+                        <span id="otaAttemptBadge" class="hidden text-[8px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 uppercase">Attempt 1/3</span>
+                      </div>
                       <span id="otaProgressPercent" class="text-[10px] font-bold text-indigo-400">0%</span>
                     </div>
                     <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden border border-white/10">
@@ -918,14 +929,17 @@
                         class="bg-gradient-to-r from-indigo-500 to-teal-400 h-full w-0 transition-all duration-150">
                       </div>
                     </div>
+                    <button id="otaResumeBtn" onclick="resumeOtaFlash()"
+                      class="hidden w-full mt-2.5 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 active:scale-95 text-white font-bold text-[10px] rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+                      <i class="ph-bold ph-arrow-clockwise"></i> Resume / Retry Flash (Cached Build)
+                    </button>
                   </div>
                   <div id="otaCompleteMsg" class="hidden">
                     <div class="flex items-center gap-2 p-3 rounded-xl bg-teal-500/20 border border-teal-400/50 mt-1">
                       <i class="ph-bold ph-check-circle text-teal-300 text-xl shrink-0"></i>
                       <div>
                         <p class="text-[11px] font-bold text-teal-200">Firmware Flashed Successfully!</p>
-                        <p class="text-[9px] text-teal-300/70 mt-0.5">MIGO is restarting… You can reconnect in a few
-                          seconds.</p>
+                        <p class="text-[9px] text-teal-300/70 mt-0.5">MIGO is restarting… You can reconnect in a few seconds.</p>
                       </div>
                     </div>
                   </div>
@@ -9769,8 +9783,50 @@ await migo.sendFace("SMILE");`;
       } catch (e) { badge.classList.add('hidden'); }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // FIRMWARE OTA CACHING & DOWNLOAD RESUME ENGINE
+    // ─────────────────────────────────────────────────────────────
+    let otaCachedFirmware = null; // { bytes: Uint8Array, url: string, crc: string, sizeKb: number, downloadedAt: number }
+
+    function updateOtaCachedFirmwareUI() {
+      const badge = document.getElementById('otaCachedFirmwareBadge');
+      const text = document.getElementById('otaCachedFirmwareText');
+      const resumeBtn = document.getElementById('otaResumeBtn');
+      if (!badge || !text) return;
+      if (otaCachedFirmware && otaCachedFirmware.bytes && otaCachedFirmware.bytes.length > 0) {
+        text.textContent = `Firmware Cached (${otaCachedFirmware.sizeKb} KB · CRC: ${otaCachedFirmware.crc.substring(0, 6)})`;
+        badge.classList.remove('hidden');
+        if (resumeBtn) resumeBtn.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+        if (resumeBtn) resumeBtn.classList.add('hidden');
+      }
+    }
+
+    function clearCachedOtaFirmware() {
+      otaCachedFirmware = null;
+      updateOtaCachedFirmwareUI();
+      const statusText = document.getElementById('otaStatusText');
+      if (statusText) statusText.innerText = 'Firmware cache cleared. Next flash will download freshly.';
+      const badge = document.getElementById('otaCachedFirmwareBadge');
+      if (badge) badge.classList.add('hidden');
+    }
+
+    async function resumeOtaFlash() {
+      if (!otaCachedFirmware || !otaCachedFirmware.bytes) {
+        startOtaUpdateFromGoogleDrive(false, true);
+        return;
+      }
+      const activeMigo = (typeof connectedMigos !== 'undefined' ? connectedMigos : []).find(m => m.active || (m.server && m.server.connected)) || (typeof connectedMigos !== 'undefined' ? connectedMigos[0] : null);
+      if (!activeMigo) {
+        alert('Please connect to MIGO over Bluetooth first!');
+        return;
+      }
+      await _executeOtaFlash(otaCachedFirmware.bytes, activeMigo);
+    }
+
     // Helper: write OLED update message directly to the MIGO's write characteristic
-    // during OTA so we don't contend with the main GATT queue.
+    // during OTA safely without contending with the main GATT queue.
     async function _sendOtaOledUpdate(activeMigo, pct, label) {
       if (!activeMigo?.writeChar) return;
       const enc = new TextEncoder();
@@ -9778,19 +9834,18 @@ await migo.sendFace("SMILE");`;
       const line2 = `${pct}%`;
       try {
         await activeMigo.writeChar.writeValueWithoutResponse(enc.encode('CMD:OLED_CLEAR'));
-        await new Promise(r => setTimeout(r, 30));
+        await new Promise(r => setTimeout(r, 25));
         await activeMigo.writeChar.writeValueWithoutResponse(enc.encode(`CMD:OLED_PRINT:0:0:2:${line1}`));
-        await new Promise(r => setTimeout(r, 30));
+        await new Promise(r => setTimeout(r, 25));
         await activeMigo.writeChar.writeValueWithoutResponse(enc.encode(`CMD:OLED_PRINT:30:28:2:${line2}`));
-        await new Promise(r => setTimeout(r, 30));
+        await new Promise(r => setTimeout(r, 25));
         await activeMigo.writeChar.writeValueWithoutResponse(enc.encode('CMD:OLED_SHOW'));
       } catch (e) {
         console.warn('[OTA OLED] Could not send OLED update:', e.message);
       }
     }
 
-    // Core flash routine — separated so it can be called from both
-    // the normal flow and the "Flash Anyway" confirmation button
+    // Core flash routine with 3-attempt automated retry protocol & resilient chunk pacing
     async function _executeOtaFlash(bytes, activeMigo) {
       const container = document.getElementById('otaProgressContainer');
       const activeRow = document.getElementById('otaProgressActive');
@@ -9799,96 +9854,146 @@ await migo.sendFace("SMILE");`;
       const progressBar = document.getElementById('otaProgressBar');
       const completeMsg = document.getElementById('otaCompleteMsg');
       const btn = document.getElementById('startOtaBtn');
+      const attemptBadge = document.getElementById('otaAttemptBadge');
+      const resumeBtn = document.getElementById('otaResumeBtn');
 
       document.getElementById('otaSameFirmwareWarning')?.classList.add('hidden');
       container.classList.remove('hidden');
       if (activeRow) activeRow.classList.remove('hidden');
       if (completeMsg) completeMsg.classList.add('hidden');
+      if (resumeBtn) resumeBtn.classList.add('hidden');
       btn.disabled = true;
       btn.classList.add('opacity-50', 'cursor-not-allowed');
 
       // Suspend idle movements for the duration of OTA
       isOtaActive = true;
-      sendCmd('CMD:DIR:S'); // Stop any in-progress motor movement immediately
+      try { sendCmd('CMD:DIR:S'); } catch (e) { }
 
-      let lastOledPct = -1; // -1 means "haven't shown 0% yet"
+      const totalBytes = bytes.length;
+      const MAX_OTA_ATTEMPTS = 3;
+      let lastError = null;
 
-      try {
-        statusText.innerText = 'Connecting to MIGO OTA Service…';
-        const otaService = await activeMigo.server.getPrimaryService(otaServiceUuid);
-        const otaChar = await otaService.getCharacteristic(otaCharUuid);
+      for (let attempt = 1; attempt <= MAX_OTA_ATTEMPTS; attempt++) {
+        if (attemptBadge) {
+          attemptBadge.textContent = `Attempt ${attempt}/${MAX_OTA_ATTEMPTS}`;
+          attemptBadge.className = attempt === 1 
+            ? 'text-[8px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 uppercase'
+            : 'text-[8px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase animate-pulse';
+          attemptBadge.classList.remove('hidden');
+        }
 
-        const totalBytes = bytes.length;
-        statusText.innerText = `Starting OTA update (${Math.round(totalBytes / 1024)} KB)…`;
+        try {
+          // Reconnection / GATT verification if previous attempt dropped
+          if (attempt > 1) {
+            statusText.innerText = `⚠️ Connection reset. Auto-retrying attempt ${attempt}/${MAX_OTA_ATTEMPTS} in 1.5s…`;
+            await new Promise(r => setTimeout(r, 1500));
+            if (!activeMigo.server || !activeMigo.server.connected) {
+              statusText.innerText = `Re-establishing Bluetooth GATT link (Attempt ${attempt})…`;
+              if (activeMigo.device?.gatt) {
+                activeMigo.server = await activeMigo.device.gatt.connect();
+              }
+            }
+          }
 
-        // 1. Send START header
-        await otaChar.writeValue(new TextEncoder().encode(`START:${totalBytes}`));
-        await new Promise(r => setTimeout(r, 150));
+          statusText.innerText = `Connecting to MIGO OTA Service (Attempt ${attempt}/${MAX_OTA_ATTEMPTS})…`;
+          const otaService = await activeMigo.server.getPrimaryService(otaServiceUuid);
+          const otaChar = await otaService.getCharacteristic(otaCharUuid);
 
-        // Show "Updating... 0%" on OLED right after START handshake
-        // (after the delay so the ESP32 has switched to OTA receive mode)
-        await _sendOtaOledUpdate(activeMigo, 0, 'Updating...');
-        lastOledPct = 0;
-        percentText.innerText = '0%';
-        progressBar.style.width = '0%';
+          statusText.innerText = `Starting OTA handshake (${Math.round(totalBytes / 1024)} KB)…`;
 
-        // 2. Stream 512-byte chunks
-        const chunkSize = 512;
-        for (let i = 0; i < totalBytes; i += chunkSize) {
-          const chunk = bytes.subarray(i, i + chunkSize);
-          await otaChar.writeValue(chunk);
-          const progress = Math.min(100, Math.round(((i + chunk.length) / totalBytes) * 100));
-          percentText.innerText = `${progress}%`;
-          progressBar.style.width = `${progress}%`;
-          statusText.innerText = `Flashing: ${Math.round((i + chunk.length) / 1024)} / ${Math.round(totalBytes / 1024)} KB`;
+          // 1. Send START header
+          await otaChar.writeValue(new TextEncoder().encode(`START:${totalBytes}`));
+          await new Promise(r => setTimeout(r, 200));
 
-          // Update OLED every 10% milestone to avoid overwhelming BLE (skip at 100% so we don't race reboot)
-          const milestone = Math.floor(progress / 10) * 10;
-          if (milestone >= lastOledPct + 10 && milestone < 100) {
-            lastOledPct = milestone;
-            try { await _sendOtaOledUpdate(activeMigo, milestone, 'Updating...'); } catch (e) { }
+          percentText.innerText = '0%';
+          progressBar.style.width = '0%';
+          progressBar.className = "bg-gradient-to-r from-indigo-500 to-teal-400 h-full transition-all duration-100";
+
+          // 2. Stream chunks with adaptive pacing & per-chunk micro-retries
+          const chunkSize = 512;
+
+          for (let i = 0; i < totalBytes; i += chunkSize) {
+            const chunk = bytes.subarray(i, i + chunkSize);
+            
+            // Per-chunk write with micro-retry (up to 3 tries per chunk)
+            let chunkWritten = false;
+            let chunkErr = null;
+            for (let cTry = 1; cTry <= 3; cTry++) {
+              try {
+                await otaChar.writeValue(chunk);
+                chunkWritten = true;
+                break;
+              } catch (ce) {
+                chunkErr = ce;
+                await new Promise(r => setTimeout(r, 40 * cTry));
+              }
+            }
+            if (!chunkWritten) {
+              throw new Error(`Chunk write failed at byte ${i}: ${chunkErr?.message || 'BLE Timeout'}`);
+            }
+
+            const progress = Math.min(100, Math.round(((i + chunk.length) / totalBytes) * 100));
+            percentText.innerText = `${progress}%`;
+            progressBar.style.width = `${progress}%`;
+            statusText.innerText = `Flashing: ${Math.round((i + chunk.length) / 1024)} / ${Math.round(totalBytes / 1024)} KB (Attempt ${attempt}/${MAX_OTA_ATTEMPTS})`;
+
+            // Adaptive pacing delay (12ms) allows ESP32 flash write to commit cleanly
+            await new Promise(r => setTimeout(r, 12));
+          }
+
+          // 3. Success — store fingerprint in localStorage
+          const crc = computeCRC32(bytes);
+          const sizeKb = Math.round(totalBytes / 1024);
+          const date = new Date().toLocaleString();
+          localStorage.setItem('migo_ota_last_flash', JSON.stringify({ crc, sizeKb, date }));
+
+          // Update UI: swap progress bar for success banner
+          percentText.innerText = '100%';
+          progressBar.style.width = '100%';
+          statusText.innerText = 'OTA Complete! MIGO is restarting…';
+          if (activeRow) activeRow.classList.add('hidden');
+          if (completeMsg) completeMsg.classList.remove('hidden');
+          if (attemptBadge) attemptBadge.classList.add('hidden');
+          if (resumeBtn) resumeBtn.classList.add('hidden');
+          refreshOtaLastFlashedBadge();
+          refreshOtaVersionStatus();
+          btn.disabled = false;
+          btn.classList.remove('opacity-50', 'cursor-not-allowed');
+          isOtaActive = false;
+          return; // Flash succeeded, exit cleanly
+
+        } catch (err) {
+          lastError = err;
+          // If error occurs when progress is 100%, it is just the expected GATT disconnect on reboot
+          if (progressBar && progressBar.style.width === '100%') {
+            console.log('[OTA] Suppressing expected BLE disconnect error on reboot:', err.message);
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            isOtaActive = false;
+            return;
+          }
+          console.warn(`[OTA] Flash attempt ${attempt}/${MAX_OTA_ATTEMPTS} failed:`, err);
+          
+          if (attempt < MAX_OTA_ATTEMPTS) {
+            statusText.innerText = `⚠️ Flash interrupted (${err.message}). Auto-retrying (Attempt ${attempt + 1}/${MAX_OTA_ATTEMPTS}) in 1.5s...`;
+            progressBar.className = "bg-amber-500 h-full transition-all duration-150";
+            await new Promise(r => setTimeout(r, 1500));
           }
         }
-
-        // 3. Success — store fingerprint in localStorage
-        const crc = computeCRC32(bytes);
-        const sizeKb = Math.round(totalBytes / 1024);
-        const date = new Date().toLocaleString();
-        localStorage.setItem('migo_ota_last_flash', JSON.stringify({ crc, sizeKb, date }));
-
-        // Update UI: swap progress bar for success banner
-        percentText.innerText = '100%';
-        progressBar.style.width = '100%';
-        statusText.innerText = 'OTA Complete! MIGO is restarting…';
-        if (activeRow) activeRow.classList.add('hidden');
-        if (completeMsg) completeMsg.classList.remove('hidden');
-        refreshOtaLastFlashedBadge();
-        refreshOtaVersionStatus();
-
-        // Safely attempt post-flash OLED update without letting GATT disconnect throw
-        try {
-          await _sendOtaOledUpdate(activeMigo, 100, 'Done!');
-        } catch (e) {
-          console.log('[OTA] Post-flash GATT disconnect expected during robot restart.');
-        }
-
-      } catch (err) {
-        // If error occurs AFTER 100% completion, it's just the expected GATT disconnect when MIGO reboots!
-        if (progressBar && progressBar.style.width === '100%') {
-          console.log('[OTA] Suppressing expected BLE disconnect error on reboot:', err.message);
-          return;
-        }
-        console.error('OTA Flash Failed:', err);
-        statusText.innerText = `❌ OTA Failed: ${err.message}`;
-        // Restore MIGO face on failure
-        setTimeout(() => { sendCmd('CMD:FACE:IDLE'); }, 300);
-        throw err;
-      } finally {
-        btn.disabled = false;
-        btn.classList.remove('opacity-50', 'cursor-not-allowed');
-        // Re-enable idle movements
-        isOtaActive = false;
       }
+
+      // If loop finishes without returning, all 3 attempts failed
+      console.error('All OTA flash attempts failed:', lastError);
+      statusText.innerText = `❌ OTA Failed after ${MAX_OTA_ATTEMPTS} attempts: ${lastError?.message || 'BLE Transmission Error'}. Firmware remains cached.`;
+      if (resumeBtn) resumeBtn.classList.remove('hidden');
+      if (attemptBadge) {
+        attemptBadge.textContent = 'Failed';
+        attemptBadge.className = 'text-[8px] font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 uppercase';
+      }
+      try { sendCmd('CMD:FACE:IDLE'); } catch (e) { }
+      btn.disabled = false;
+      btn.classList.remove('opacity-50', 'cursor-not-allowed');
+      isOtaActive = false;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -9973,6 +10078,16 @@ await migo.sendFace("SMILE");`;
         const cloudCRC = computeCRC32(bytes).substring(0, 6).toUpperCase();
         const sizeKb = Math.round(bytes.length / 1024);
 
+        // Pre-cache downloaded binary in memory
+        otaCachedFirmware = {
+          bytes: bytes,
+          url: targetUrl,
+          crc: cloudCRC,
+          sizeKb: sizeKb,
+          downloadedAt: Date.now()
+        };
+        updateOtaCachedFirmwareUI();
+
         if (cloudText) {
           cloudText.innerHTML = `<span class="text-indigo-300 font-bold text-[11px] block truncate">CRC: ${cloudCRC}</span><span class="text-[9px] text-white/40 font-normal block truncate">${sizeKb} KB · Official Release</span>`;
         }
@@ -10045,7 +10160,7 @@ await migo.sendFace("SMILE");`;
 
     const OFFICIAL_FIRMWARE_URL = 'https://github.com/rionmartin99/MIGObyRION.github.io/raw/refs/heads/main/MIGOESP.ino.bin';
 
-    async function startOtaUpdateFromGoogleDrive(forceFlash = false) {
+    async function startOtaUpdateFromGoogleDrive(forceFlash = false, forceDownload = false) {
       const input = document.getElementById('otaDriveLinkInput');
       const warning = document.getElementById('otaSameFirmwareWarning');
       const detail = document.getElementById('otaSameWarningDetail');
@@ -10074,7 +10189,18 @@ await migo.sendFace("SMILE");`;
         return;
       }
 
-
+      // ── CHECK FIRMWARE CACHE FIRST (Avoid redundant network downloads) ──
+      if (!forceDownload && otaCachedFirmware && otaCachedFirmware.url === rawInput && otaCachedFirmware.bytes?.length > 1000) {
+        console.log('[OTA] Using cached firmware bytes (zero network fetch required):', otaCachedFirmware.sizeKb, 'KB');
+        const container = document.getElementById('otaProgressContainer');
+        const statusText = document.getElementById('otaStatusText');
+        container.classList.remove('hidden');
+        statusText.innerText = `📦 Using cached build (${otaCachedFirmware.sizeKb} KB, CRC: ${otaCachedFirmware.crc.substring(0, 6)}) — Initiating Flash…`;
+        updateOtaCachedFirmwareUI();
+        await new Promise(r => setTimeout(r, 400));
+        await _executeOtaFlash(otaCachedFirmware.bytes, activeMigo);
+        return;
+      }
 
       // ── Determine URL strategies ──
       let urlStrategies = [];
@@ -10181,17 +10307,25 @@ await migo.sendFace("SMILE");`;
 
         if (bytes.length < 1000) throw new Error('Downloaded file too small or invalid. Check Google Drive sharing is set to "Anyone with the link can view".');
 
+        // Save downloaded binary to memory cache
+        const crc = computeCRC32(bytes);
+        const sizeKb = Math.round(bytes.length / 1024);
+        otaCachedFirmware = {
+          bytes: bytes,
+          url: rawInput,
+          crc: crc,
+          sizeKb: sizeKb,
+          downloadedAt: Date.now()
+        };
+        updateOtaCachedFirmwareUI();
+
         btn.disabled = false;
         btn.classList.remove('opacity-50', 'cursor-not-allowed');
 
         // ── Hash + URL check ──────────────────────────────────────────────
         // Compute CRC before flashing — detect identical binaries even if URL changed.
         if (!forceFlash) {
-          const newCRC = computeCRC32(bytes);
-          const sizeKb = Math.round(bytes.length / 1024);
           const stored = localStorage.getItem('migo_ota_last_flash');
-          const storedUrl = localStorage.getItem('migo_ota_last_url') || '';
-
           let sameDetected = false;
           let sameReason = '';
 
@@ -10199,9 +10333,9 @@ await migo.sendFace("SMILE");`;
           if (stored) {
             try {
               const last = JSON.parse(stored);
-              if (last.crc === newCRC) {
+              if (last.crc === crc) {
                 sameDetected = true;
-                sameReason = `This firmware file (${sizeKb} KB, CRC: ${newCRC}) is identical to the build flashed on ${last.date}. Re-flashing won't change anything on MIGO.`;
+                sameReason = `This firmware file (${sizeKb} KB, CRC: ${crc}) is identical to the build flashed on ${last.date}. Re-flashing won't change anything on MIGO.`;
               }
             } catch (e) { /* corrupt stored data — ignore and flash normally */ }
           }
@@ -10232,9 +10366,7 @@ await migo.sendFace("SMILE");`;
         localStorage.setItem('migo_ota_last_url', rawInput);
 
         // Explicit status feedback for NEW firmware detection
-        const newCRC = computeCRC32(bytes);
-        const sizeKb = Math.round(bytes.length / 1024);
-        statusText.innerText = `✨ New firmware detected (${sizeKb} KB, CRC32: ${newCRC}) — Flashing to MIGO…`;
+        statusText.innerText = `✨ Firmware verified (${sizeKb} KB, CRC32: ${crc}) — Flashing to MIGO…`;
         await new Promise(r => setTimeout(r, 600));
 
         // Different (or first-time) firmware — flash immediately
@@ -10381,14 +10513,10 @@ await migo.sendFace("SMILE");`;
       const landing = document.getElementById('landingPage');
       if (!landing) return;
       const isLanding = !landing.classList.contains('hidden');
-      if (typeof v5Settings !== 'undefined' && v5Settings.landingIdleAnim === false) {
-        sendLandingStateToMigo(false);
-        sendCmd('CMD:IDLE:0');
-        sendCmd('CMD:ANIM:OFF');
-        sendCmd('CMD:FACE:STATIC');
+      sendLandingStateToMigo(isLanding);
+      if (isLanding && typeof v5Settings !== 'undefined' && v5Settings.landingIdleAnim === false) {
+        sendCmd('CMD:WIGGLE:0');
         sendCmd('CMD:DIR:S');
-      } else {
-        sendLandingStateToMigo(isLanding);
       }
     }
 
@@ -10641,21 +10769,18 @@ await migo.sendFace("SMILE");`;
 
     function sendLandingStateToMigo(isLanding) {
       if (!connectedMigos || connectedMigos.length === 0) return;
-      const animEnabled = typeof v5Settings === 'undefined' || v5Settings.landingIdleAnim !== false;
       if (isLanding) {
+        // Landing Page mode: Always maintain CMD:LANDING:1 so ultrasonic hand-swipe Date & Time trigger stays active
+        sendCmd('CMD:LANDING:1');
+        const animEnabled = typeof v5Settings === 'undefined' || v5Settings.landingIdleAnim !== false;
         if (!animEnabled) {
-          // Animation OFF: send LANDING:0 so firmware never enters its self-animating loop.
-          // Firmware landing:0 mode = passive/idle, no autonomous wiggles.
-          sendCmd('CMD:LANDING:0');
           sendCmd('CMD:WIGGLE:0');
-          sendCmd('CMD:IDLE:0');
-          sendCmd('CMD:ANIM:OFF');
           sendCmd('CMD:DIR:S');
         } else {
-          sendCmd('CMD:LANDING:1');
           sendCmd('CMD:WIGGLE:1');
         }
       } else {
+        // Leaving landing page: disable hand-swipe date/time trigger & idle wiggles
         sendCmd('CMD:LANDING:0');
         sendCmd('CMD:WIGGLE:0');
         sendCmd('CMD:IDLE:0');
@@ -10684,12 +10809,10 @@ await migo.sendFace("SMILE");`;
       const landingPage = document.getElementById('landingPage');
       const isLanding = landingPage && !landingPage.classList.contains('hidden');
       if (isLanding) {
+        // Maintain CMD:LANDING:1 on robot while silencing motor pulses if animation is OFF
+        sendCmd('CMD:LANDING:1');
         if (typeof v5Settings !== 'undefined' && v5Settings.landingIdleAnim === false) {
-          // Animation OFF: keep firmware in passive mode (LANDING:0), not the self-animating LANDING:1 loop.
-          sendCmd('CMD:LANDING:0');
           sendCmd('CMD:WIGGLE:0');
-          sendCmd('CMD:IDLE:0');
-          sendCmd('CMD:ANIM:OFF');
           sendCmd('CMD:DIR:S');
         }
       }

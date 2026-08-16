@@ -1,12 +1,17 @@
-// MIGO Controller Service Worker v8.10.2
-const CACHE_NAME = 'migo-controller-cache-v8.10.2';
+/*
+ * Version: 7.6.6
+ * Change Log:
+ * [Aug 16, 2026 10:29 PM] Fix: Updated CACHE_NAME to migo-controller-cache-v7.6.6 to trigger automatic PWA cache invalidation and pre-cache updated OTA and landing page modules.
+ */
+
+// MIGO Controller Service Worker v7.6.6
+const CACHE_NAME = 'migo-controller-cache-v7.6.6';
 
 // Core local assets to cache on install
 const STATIC_ASSETS = [
   './',
   './index.html',
   './MIGOMultiCOntrol.html',
-  './migo_competition.html',
   './manifest.json',
   './lib/blockly/blockly_compressed.js',
   './lib/blockly/blocks_compressed.js',
@@ -19,7 +24,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
-      console.log('[MIGO ServiceWorker] Pre-caching core app shell v8.10.2');
+      console.log('[MIGO ServiceWorker] Pre-caching core app shell v7.6.6');
       for (const asset of STATIC_ASSETS) {
         try {
           await cache.add(asset);
