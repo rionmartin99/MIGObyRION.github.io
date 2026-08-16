@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 7.6.8
+  MIGO Web Controller | Version: 7.7.1
   Change Log:
+  [Aug 17, 2026 12:00 AM] Fix: Comprehensive landing page button fix — repaired unescaped template backticks, null-guard for joyContainer.addEventListener, try-catch for Blockly.inject with mock fallback workspace, sleep overlay blocked while on landing page, and explicit window.XXX global exports for all onclick handler functions.
+  [Aug 16, 2026 11:38 PM] Fix: Resolved unresponsive landing page buttons by fixing Temporal Dead Zone (TDZ) initialization order, adding .hidden !important CSS display rule, and wrapping startup routines in error guards.
+  [Aug 16, 2026 11:30 PM] Fix: Fixed AI Code Engine failure by increasing Gemini token limit to 4096, adding pre-execution syntax validation, expanded API method aliases, and repaired self-healing auto-correction loop.
   [Aug 16, 2026 11:15 PM] Fix: Fixed STT voice echo/word repetition with intelligent transcript deduplication, enforced Landing Idle Animations OFF setting in random scanning loop, and ensured AIONA mode fully respects disabled Obstacle Guard setting.
   [Aug 16, 2026 10:45 PM] Fix: Restored real-time "Updating... n%" OLED status display & progress streaming during wireless OTA firmware flashing.
-  [Aug 16, 2026 10:10 PM] Fix & New Feature: Restored ultrasonic hand-swipe time/date trigger on Landing Page by keeping CMD:LANDING:1 active; added downloaded firmware binary memory caching, 3-attempt automated OTA retry protocol, and flash progress resume feature.
-  [Aug 09, 2026 10:22 PM] Fix: Robot Landing Idle Animations setting (OFF) now truly stops firmware animations. Both sendLandingStateToMigo and keepAliveMotorSilence were sending CMD:LANDING:1 (which triggers firmware's autonomous loop) even when animations were disabled. Fixed to send CMD:LANDING:0 when setting is OFF.
-  [Aug 09, 2026 10:15 PM] UI: Improved AIONA header and chat bar responsiveness. Toggle buttons now group into a centered pill container on mobile; input/send row gets full-width. Settings header now stacks symmetrically on mobile.
 -->
 
 <!DOCTYPE html>
@@ -50,6 +50,10 @@
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
   <style>
+    .hidden {
+      display: none !important;
+    }
+
     html {
       height: -webkit-fill-available;
     }
@@ -64,7 +68,6 @@
       width: 100vw;
       margin: 0;
       overflow: hidden;
-      touch-action: none;
     }
 
     .glass-panel {
@@ -2690,19 +2693,34 @@
         aiona.classList.remove('flex');
         stopAionaMode();
       }
-      landing.classList.remove('hidden');
-      if (typeof sendLandingStateToMigo === 'function') sendLandingStateToMigo(true);
-      // Hide AI chat float button
-      document.getElementById('chatFloatBtn').style.display = 'none';
-      setTimeout(() => {
+      if (landing) {
+        landing.classList.remove('hidden');
         landing.style.opacity = '1';
+      }
+      if (typeof sendLandingStateToMigo === 'function') sendLandingStateToMigo(true);
+      // Hide AI chat float button (v7.7.1: null-guard)
+      const _chatFloat = document.getElementById('chatFloatBtn');
+      if (_chatFloat) _chatFloat.style.display = 'none';
+      setTimeout(() => {
+        if (landing) landing.style.opacity = '1';
+        // v7.7.1: Reset sleep timer now that we're back on landing page
+        if (typeof resetInactivityTimer === 'function') resetInactivityTimer();
       }, 50);
 
       isUploading = false;
       pendingAck = null;
-      stopSimulation();
-      setMobileView('controls');
+      if (typeof stopSimulation === 'function') stopSimulation();
+      if (typeof setMobileView === 'function') setMobileView('controls');
     }
+
+    // v7.7.1: Explicit window.XXX exports for ALL landing page onclick handlers.
+    // While function declarations ARE globally hoisted, this belt-and-suspenders
+    // approach ensures they are reachable even in edge cases (e.g., partial script
+    // failures, strict-mode extensions, or non-standard mobile browser quirks).
+    window.selectTier = selectTier;
+    window.startApp = startApp;
+    window.goBackToLanding = goBackToLanding;
+    window.updateNameCharCount = updateNameCharCount;
 
     let currentMobileView = 'controls';
     function setMobileView(view) {
@@ -4291,13 +4309,18 @@
       if (joyActive) sendCmd(`CMD:JOY:${lastLeft}:${lastRight}:`);
     }, 50);
 
-    joyContainer.addEventListener('mousedown', (e) => { isDragging = true; handleJoy(e); });
-    document.addEventListener('mousemove', handleJoy);
-    document.addEventListener('mouseup', releaseJoy);
-    joyContainer.addEventListener('touchstart', (e) => { isDragging = true; handleJoy(e); }, { passive: false });
-    joyContainer.addEventListener('touchmove', handleJoy, { passive: false });
-    joyContainer.addEventListener('touchend', releaseJoy);
-    joyContainer.addEventListener('touchcancel', releaseJoy);
+    // v7.7.1 Fix: Null-guard joyContainer before addEventListener to prevent crash
+    if (joyContainer) {
+      joyContainer.addEventListener('mousedown', (e) => { isDragging = true; handleJoy(e); });
+      document.addEventListener('mousemove', handleJoy);
+      document.addEventListener('mouseup', releaseJoy);
+      joyContainer.addEventListener('touchstart', (e) => { isDragging = true; handleJoy(e); }, { passive: false });
+      joyContainer.addEventListener('touchmove', handleJoy, { passive: false });
+      joyContainer.addEventListener('touchend', releaseJoy);
+      joyContainer.addEventListener('touchcancel', releaseJoy);
+    } else {
+      console.warn('[v7.7.1] joystickContainer not found — joystick events deferred until app loads.');
+    }
 
     // --- Blockly Logic ---
     function runAutoMode() {
@@ -4473,18 +4496,32 @@
     }
 
     const isMobileLayout = window.innerWidth < 1024;
-    let workspace = Blockly.inject('blocklyDiv', {
-      toolbox: `<xml xmlns="https://developers.google.com/blockly/xml"><block type="event_setup"></block></xml>`,
-      horizontalLayout: isMobileLayout,
-      toolboxPosition: isMobileLayout ? 'TOP' : 'LEFT',
-      zoom: { controls: true, wheel: true, startScale: 0.8, maxScale: 2, minScale: 0.3, scaleSpeed: 1.1 },
-      trashcan: true
-    });
-
-    // Code preview change listener
-    workspace.addChangeListener(() => {
-      updateCodePreview();
-    });
+    // v7.7.1 Fix: Wrap Blockly.inject in try-catch. If Blockly fails, use a safe mock
+    // so the rest of the script (including ALL landing page functions) still runs.
+    let workspace;
+    try {
+      workspace = Blockly.inject('blocklyDiv', {
+        toolbox: `<xml xmlns="https://developers.google.com/blockly/xml"><block type="event_setup"></block></xml>`,
+        horizontalLayout: isMobileLayout,
+        toolboxPosition: isMobileLayout ? 'TOP' : 'LEFT',
+        zoom: { controls: true, wheel: true, startScale: 0.8, maxScale: 2, minScale: 0.3, scaleSpeed: 1.1 },
+        trashcan: true
+      });
+      // Code preview change listener
+      workspace.addChangeListener(() => {
+        updateCodePreview();
+      });
+    } catch (blocklyErr) {
+      console.warn('[v7.7.1] Blockly.inject failed — creating safe mock workspace. Landing page will still work.', blocklyErr);
+      workspace = {
+        addChangeListener: () => {},
+        updateToolbox: () => {},
+        clear: () => {},
+        getAllBlocks: () => [],
+        getTopBlocks: () => [],
+        dispose: () => {}
+      };
+    }
 
     function parseValue(block) {
       if (!block) return { c: "VAL", v: 0 };
@@ -8570,21 +8607,60 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
         // ── JS CODE SANITIZER ──────────────────────────────────────────────────
         // Strip common AI output artifacts that cause 'Unexpected token' parse errors
-        // before the code reaches new Function(). This prevents pointless self-heal loops.
+        // before the code reaches new Function().
         let sanitized = codeString
           .replace(/^```[\w]*\n?/gm, '')          // strip opening ``` or ```javascript fences
-          .replace(/^```\s*$/gm, '')               // strip closing ``` fences
+          .replace(/```\s*$/gm, '')               // strip closing ``` fences
           .replace(/^#include\s+.*$/gm, '')         // strip stray C++ #include lines
           .replace(/^#define\s+.*$/gm, '')          // strip stray C++ #define lines
           .replace(/^\/\/ ━.*$/gm, '')              // strip decorative comment dividers
           .replace(/<\/?super-aiona-(?:script|cpp)>/gi, '') // strip any leftover XML tags
-          .replace(/<\/?[a-z][\s\S]*?>/gi, '')      // strip any other stray HTML/XML tags
+          .replace(/<\/?script>/gi, '')             // strip any stray script tags
           .trim();
 
         if (sanitized !== codeString) {
-          this.log("Code sanitizer: stripped non-JS artifacts from script before execution.", "system");
+          this.log("Code sanitizer: cleaned markdown code fences/artifacts before execution.", "system");
         }
         codeString = sanitized;
+        // ──────────────────────────────────────────────────────────────────────
+
+        // ── PRE-EXECUTION SYNTAX VALIDATION ────────────────────────────────────
+        let scriptRunner = null;
+        try {
+          scriptRunner = new Function('migo', 'log', 'signal', `
+            return (async () => {
+              ${codeString}
+            })();
+          `);
+        } catch (syntaxErr) {
+          this.log(`Syntax Error in generated code: ${syntaxErr.message}`, "error");
+          this.setStatus("ERROR");
+
+          // Trigger Auto-Correction / Self-Healing for syntax errors immediately
+          if (this.retryCount < 2) {
+            this.retryCount++;
+            this.log(`[Auto-Correction] Attempt ${this.retryCount}/2: Syntax error detected! Requesting AI brain to repair code...`, "warn");
+            setTimeout(() => {
+              if (window.aionaSendMessageText) {
+                const errorPrompt = `SYSTEM ALERT: The dynamic JavaScript code generated in <super-aiona-script> contains a syntax error: ${syntaxErr.message}.
+
+Code that produced the error:
+\`\`\`javascript
+${codeString}
+\`\`\`
+
+CRITICAL REPAIR INSTRUCTION:
+1. Fix the syntax error (e.g. balance all parentheses, close all brackets/braces/quotes, fix incomplete lines).
+2. Make sure the script is 100% complete and fully closed.
+3. Output the corrected JavaScript inside <super-aiona-script>...</super-aiona-script> and matching C++ in <super-aiona-cpp>...</super-aiona-cpp>.`;
+                window.aionaSendMessageText(errorPrompt, true);
+              }
+            }, 1000);
+          } else {
+            this.log("Max auto-correction retries (2) reached for syntax error. Please edit code in editor.", "error");
+          }
+          return;
+        }
         // ──────────────────────────────────────────────────────────────────────
 
         if (this.activeTask) {
@@ -8617,10 +8693,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         }, 100);
 
         // Microcontroller / Robot API bridge for dynamic code execution
-        // NOTE: Uses sendCmd (not sendCmdReliable) because MIGO firmware does NOT send ACK packets
-        // for motor/OLED/face commands. sendCmdReliable would timeout after 3s and crash the task.
         const superSendCmd = async (cmd) => {
-          // Write directly to BLE via the same GATT queue as sendCmd, no ACK waiting
           return sendCmd(cmd);
         };
 
@@ -8712,7 +8785,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
             this.checkAborted(abortController);
             this.log(`Action: Face -> ${expression}`);
             const validFaces = ['SMILE', 'GRIN', 'TALK', 'IDLE', 'SMIRK'];
-            const face = expression.toUpperCase();
+            const face = expression ? expression.toUpperCase() : 'SMILE';
             await superSendCmd(`CMD:FACE:${validFaces.includes(face) ? face : 'SMILE'}`);
           },
 
@@ -8746,7 +8819,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           // ── GPIO PIN CONTROL ──────────────────────────────────────
           pinMode: async (pin, mode) => {
             this.checkAborted(abortController);
-            const m = (mode.toUpperCase() === 'IN' || mode.toUpperCase() === 'INPUT') ? 'IN' : 'OUT';
+            const m = (mode && (mode.toUpperCase() === 'IN' || mode.toUpperCase() === 'INPUT')) ? 'IN' : 'OUT';
             this.log(`Action: pinMode(${pin}, ${m})`);
             await superSendCmd(`CMD:PM:${pin}:${m}`);
           },
@@ -8775,7 +8848,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
           getAnalogPort: (port = 'A') => {
             this.checkAborted(abortController);
-            const p = port.toUpperCase();
+            const p = port ? port.toUpperCase() : 'A';
             if (p === 'A' && typeof aionaLastPlugA !== 'undefined') return aionaLastPlugA;
             if (p === 'B' && typeof aionaLastPlugB !== 'undefined') return aionaLastPlugB;
             if (p === 'C' && typeof aionaLastPlugC !== 'undefined') return aionaLastPlugC;
@@ -8789,32 +8862,52 @@ Choose the tag that best represents the tone of your text. Do not include any ot
             if (typeof speakText === 'function') speakText(text);
           },
 
-          // ── TIMING ────────────────────────────────────────────────
-          wait: (ms) => this.wait(ms, abortController)
+          // ── TIMING & DEBUGGING ────────────────────────────────────
+          wait: (ms) => this.wait(ms, abortController),
+          delay: (ms) => this.wait(ms, abortController),
+          log: (msg) => this.log(msg, "info")
         };
+
+        // Handy method aliases for robust execution
+        migoBridge.forward = migoBridge.moveForward;
+        migoBridge.backward = migoBridge.moveBackward;
+        migoBridge.left = migoBridge.turnLeft;
+        migoBridge.right = migoBridge.turnRight;
+        migoBridge.stop = migoBridge.stopMotors;
+        migoBridge.initOled = migoBridge.oledInit;
+        migoBridge.oled_init = migoBridge.oledInit;
+        migoBridge.clearOled = migoBridge.oledClear;
+        migoBridge.oled_clear = migoBridge.oledClear;
+        migoBridge.showOled = migoBridge.oledShow;
+        migoBridge.oled_show = migoBridge.oledShow;
+        migoBridge.print = migoBridge.oledPrint;
+        migoBridge.oled_print = migoBridge.oledPrint;
+        migoBridge.oled = migoBridge.printOled;
+        migoBridge.displayOled = migoBridge.printOled;
+        migoBridge.setServo = migoBridge.setServoAngle;
+        migoBridge.servo = migoBridge.setServoAngle;
+        migoBridge.led = migoBridge.setLed;
+        migoBridge.digital_write = migoBridge.digitalWrite;
+        migoBridge.analog_write = migoBridge.analogWrite;
+        migoBridge.pin_mode = migoBridge.pinMode;
+        migoBridge.play_tone = migoBridge.playTone;
+        migoBridge.getDistance = migoBridge.getUltrasonicDistance;
+        migoBridge.readUltrasonic = migoBridge.getUltrasonicDistance;
 
         try {
           const timeoutPromise = new Promise((_, reject) => {
             setTimeout(() => reject(new Error(`Task timed out after ${timeoutMs / 1000}s`)), timeoutMs);
           });
 
-          // Abort-cancel promise: resolves (not rejects) immediately when abort fires,
-          // which causes Promise.race to settle and the catch block sees signal.aborted=true
+          // Abort-cancel promise
           const abortPromise = new Promise((resolve) => {
             abortController.signal.addEventListener('abort', () => {
-              // Immediately stop motors on abort signal
               try { sendCmd('CMD:DIR:S'); } catch (e) { }
               const abortErr = new Error('Task aborted by user');
               abortErr.name = 'AbortError';
               resolve(Promise.reject(abortErr));
             }, { once: true });
           });
-
-          const scriptRunner = new Function('migo', 'log', 'signal', `
-            return (async () => {
-              ${codeString}
-            })();
-          `);
 
           await Promise.race([
             scriptRunner(migoBridge, (msg) => this.log(msg), abortController.signal),
@@ -8826,28 +8919,41 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           this.setStatus("COMPLETED");
 
         } catch (err) {
-          // If a task times out or hits an error, immediately abort the script!
-          try { abortController.abort(err.message || "Task ended via error/timeout"); } catch (e) { }
+          const isExplicitAbort = (err && (err.name === 'AbortError' ||
+            (abortController.signal.aborted && abortController.signal.reason && !abortController.signal.reason.includes('error'))));
 
-          if (err.name === 'AbortError' || abortController.signal.aborted) {
-            this.log(`Task Aborted: ${err.message || 'Cancelled by user'}`, "warn");
+          if (isExplicitAbort) {
+            this.log(`Task Aborted: ${err.message || abortController.signal.reason || 'Cancelled by user'}`, "warn");
             this.setStatus("ABORTED");
           } else {
-            this.log(`Execution Exception: ${err.message}`, "error");
+            // Signal abort to stop any ongoing async steps
+            try { abortController.abort("Runtime error: " + (err ? err.message : "Unknown error")); } catch (e) { }
+            this.log(`Execution Exception: ${err ? err.message : 'Unknown exception'}`, "error");
             this.setStatus("ERROR");
 
             // --- AUTO-CORRECTION (SELF-HEALING) ENGINE ---
-            if (this.retryCount < 1) {
+            if (this.retryCount < 2) {
               this.retryCount++;
-              this.log("Auto-Correction triggered! Asking AI Code engine to fix the mistake...", "warn");
+              this.log(`[Auto-Correction] Attempt ${this.retryCount}/2: Runtime error encountered! Asking AI Code engine to self-heal...`, "warn");
               setTimeout(() => {
                 if (window.aionaSendMessageText) {
-                  const errorPrompt = `SYSTEM ALERT: The execution of the previous <super-aiona-script> failed with error: ${err.message}. Please analyze the mistake, fix the JavaScript and C++ code, and output the corrected blocks.`;
+                  const errorPrompt = `SYSTEM ALERT: The execution of the previous dynamic <super-aiona-script> encountered a runtime error!
+Error: ${err ? err.message : 'Unknown error'}
+
+Code that failed:
+\`\`\`javascript
+${codeString}
+\`\`\`
+
+CRITICAL REPAIR INSTRUCTION:
+1. Analyze the root cause of the error.
+2. Ensure you ONLY use valid methods available in the migo API (e.g. await migo.printOled("...", x, y, size), await migo.wait(ms), await migo.moveForward(speed, ms), etc.).
+3. Generate a complete, bug-free, fully-closed JavaScript block inside <super-aiona-script>...</super-aiona-script> and matching C++ code in <super-aiona-cpp>...</super-aiona-cpp>.`;
                   window.aionaSendMessageText(errorPrompt, true);
                 }
-              }, 1000);
+              }, 1200);
             } else {
-              this.log("Max auto-correction retries reached. Stopping.", "error");
+              this.log("Max auto-correction retries (2) reached. Please review the code in the editor.", "error");
             }
           }
         } finally {
@@ -8865,6 +8971,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           // Only clear activeTask if it hasn't been overwritten by a NEW task
           if (this.activeTask && this.activeTask.abortController === abortController) {
             this.activeTask = null;
+            const runBtn = document.getElementById("superAionaRunBtn");
             if (runBtn) runBtn.disabled = false;
 
             setTimeout(() => {
@@ -9587,45 +9694,173 @@ await migo.sendFace("SMILE");`;
       }
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // PERSONALITY SYSTEM (Declared before initPageOnLoad to prevent TDZ ReferenceError)
+    // ═══════════════════════════════════════════════════════════════
+    const PERSONALITY_TRAITS = [
+      { id: 'safety_first', emoji: '🛡️', label: 'Safety-First', desc: 'Cautious, safety-aware, responsible' },
+      { id: 'friendly', emoji: '🤗', label: 'Friendly & Warm', desc: 'Warm, caring, kind-hearted' },
+      { id: 'curious', emoji: '🧠', label: 'Curious & Intellectual', desc: 'Inquisitive, loves learning' },
+      { id: 'playful', emoji: '😄', label: 'Playful & Funny', desc: 'Lighthearted, jokes and puns' },
+      { id: 'calm', emoji: '🌙', label: 'Calm & Soothing', desc: 'Relaxed, gentle, peaceful' },
+      { id: 'energetic', emoji: '⚡', label: 'Energetic', desc: 'Enthusiastic, upbeat, vivid' },
+      { id: 'coach', emoji: '🏅', label: 'Supportive Coach', desc: 'Encouraging, goal-oriented' },
+      { id: 'storyteller', emoji: '📖', label: 'Storyteller', desc: 'Narrative, vivid, imaginative' },
+      { id: 'philosopher', emoji: '🔭', label: 'Philosopher', desc: 'Thoughtful, reflective, deep' },
+      { id: 'creative', emoji: '🎨', label: 'Creative & Artistic', desc: 'Expressive, innovative, aesthetic' },
+    ];
+
+    const TONE_OPTIONS = ['Casual', 'Formal', 'Child-Friendly', 'Teen', 'Adult'];
+    const LENGTH_OPTIONS = ['Brief', 'Balanced', 'Detailed'];
+
+    let personalityState = { traits: [], tone: 'Casual', length: 'Brief' };
+
+    function loadPersonalityState() {
+      const stored = localStorage.getItem('migo_aiona_personality');
+      if (stored) {
+        try { Object.assign(personalityState, JSON.parse(stored)); } catch (e) { }
+      }
+    }
+
+    function savePersonalityState() {
+      localStorage.setItem('migo_aiona_personality', JSON.stringify(personalityState));
+    }
+
+    function resetPersonality() {
+      personalityState = { traits: [], tone: 'Casual', length: 'Brief' };
+      savePersonalityState();
+      renderPersonalityUI();
+    }
+
+    function toggleTrait(id) {
+      const idx = personalityState.traits.indexOf(id);
+      if (idx === -1) personalityState.traits.push(id);
+      else personalityState.traits.splice(idx, 1);
+      savePersonalityState();
+      renderPersonalityUI();
+    }
+
+    function setTone(tone) {
+      personalityState.tone = tone;
+      savePersonalityState();
+      renderPersonalityUI();
+    }
+
+    function setLength(len) {
+      personalityState.length = len;
+      savePersonalityState();
+      renderPersonalityUI();
+    }
+
+    function renderPersonalityUI() {
+      loadPersonalityState();
+
+      // Traits
+      const grid = document.getElementById('personalityTraitGrid');
+      if (grid) {
+        grid.innerHTML = '';
+        PERSONALITY_TRAITS.forEach(t => {
+          const active = personalityState.traits.includes(t.id);
+          const btn = document.createElement('button');
+          btn.title = t.desc;
+          btn.className = `px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all active:scale-95 cursor-pointer flex items-center gap-1 ${active ? 'bg-amber-500/30 border-amber-400/60 text-amber-300' : 'bg-black/20 border-white/10 text-white/50 hover:text-white hover:border-white/30'}`;
+          btn.innerHTML = `${t.emoji} ${t.label}`;
+          btn.onclick = () => toggleTrait(t.id);
+          grid.appendChild(btn);
+        });
+      }
+
+      // Tone
+      const toneGroup = document.getElementById('personalityToneGroup');
+      if (toneGroup) {
+        toneGroup.innerHTML = '';
+        TONE_OPTIONS.forEach(tone => {
+          const active = personalityState.tone === tone;
+          const btn = document.createElement('button');
+          btn.className = `px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-all active:scale-95 cursor-pointer ${active ? 'bg-teal-600 border-teal-400 text-white' : 'bg-black/20 border-white/10 text-white/50 hover:text-white'}`;
+          btn.textContent = tone;
+          btn.onclick = () => setTone(tone);
+          toneGroup.appendChild(btn);
+        });
+      }
+
+      // Length
+      const lengthGroup = document.getElementById('personalityLengthGroup');
+      if (lengthGroup) {
+        lengthGroup.innerHTML = '';
+        LENGTH_OPTIONS.forEach(len => {
+          const active = personalityState.length === len;
+          const btn = document.createElement('button');
+          btn.className = `flex-1 py-1.5 rounded-xl text-[10px] font-bold border transition-all active:scale-95 cursor-pointer ${active ? 'bg-purple-600 border-purple-400 text-white' : 'bg-black/20 border-white/10 text-white/50 hover:text-white'}`;
+          btn.textContent = len;
+          btn.onclick = () => setLength(len);
+          lengthGroup.appendChild(btn);
+        });
+      }
+    }
+
+    function getPersonalityPromptAddition() {
+      loadPersonalityState();
+      const lines = [];
+      if (personalityState.traits.length > 0) {
+        const traitLabels = personalityState.traits.map(id => {
+          const t = PERSONALITY_TRAITS.find(t => t.id === id);
+          return t ? `${t.emoji} ${t.label} (${t.desc})` : id;
+        });
+        lines.push(`PERSONALITY DIRECTIVE: You have the following active personality traits: ${traitLabels.join(', ')}. Let these traits naturally shape how you communicate.`);
+      }
+      lines.push(`TONE DIRECTIVE: Use a ${personalityState.tone} tone in all responses.`);
+      const lengthMap = { Brief: '2-3 sentences', Balanced: '3-5 sentences', Detailed: '5-8 sentences' };
+      lines.push(`RESPONSE LENGTH DIRECTIVE: Keep responses ${lengthMap[personalityState.length] || '2-3 sentences'} long.`);
+      return lines.join('\n');
+    }
+
+    // Initialize personality
+    loadPersonalityState();
+
     // --- Page Startup / Load Stored States ---
     function initPageOnLoad() {
-      const savedKey = localStorage.getItem('migo_gemini_api_key');
-      if (savedKey) unlockChat();
+      try {
+        const savedKey = localStorage.getItem('migo_gemini_api_key');
+        if (savedKey) unlockChat();
 
-      const savedName = localStorage.getItem('migoRobotName');
-      if (savedName) {
-        const nameInput = document.getElementById('robotNameInput');
-        if (nameInput) {
-          nameInput.value = savedName;
-          updateNameCharCount(savedName);
+        const savedName = localStorage.getItem('migoRobotName');
+        if (savedName) {
+          const nameInput = document.getElementById('robotNameInput');
+          if (nameInput) {
+            nameInput.value = savedName;
+            updateNameCharCount(savedName);
+          }
         }
-      }
 
-      // Load custom wake words from local storage
-      const storedCustom = localStorage.getItem('aiona_custom_wake_words');
-      if (storedCustom) {
-        try {
-          customWakeWords = JSON.parse(storedCustom);
-        } catch (e) {
-          customWakeWords = [null, null, null, null, null];
+        // Load custom wake words from local storage
+        const storedCustom = localStorage.getItem('aiona_custom_wake_words');
+        if (storedCustom) {
+          try {
+            customWakeWords = JSON.parse(storedCustom);
+          } catch (e) {
+            customWakeWords = [null, null, null, null, null];
+          }
         }
-      }
 
-      // Load wake words enabled states from local storage
-      const storedEnabled = localStorage.getItem('aiona_wake_words_enabled_states');
-      if (storedEnabled) {
-        try {
-          wakeWordsEnabled = JSON.parse(storedEnabled);
-        } catch (e) {
-          // Fallback to defaults
+        // Load wake words enabled states from local storage
+        const storedEnabled = localStorage.getItem('aiona_wake_words_enabled_states');
+        if (storedEnabled) {
+          try {
+            wakeWordsEnabled = JSON.parse(storedEnabled);
+          } catch (e) {
+            // Fallback to defaults
+          }
         }
+
+        updateLimitDisplay();
+
+        // ── V5: Load settings from localStorage ─────────────────────────────
+        loadAllV5Settings();
+        renderPersonalityUI();
+      } catch (err) {
+        console.error('[initPageOnLoad] Error during initialization:', err);
       }
-
-      updateLimitDisplay();
-
-      // ── V5: Load settings from localStorage ─────────────────────────────
-      loadAllV5Settings();
-      renderPersonalityUI();
     }
 
     if (document.readyState === 'loading') {
@@ -10604,6 +10839,10 @@ await migo.sendFace("SMILE");`;
 
       if (!v5Settings.simulatedSleepEnabled) return;
 
+      // v7.7.1 Fix: Do NOT activate sleep timer while user is still on landing page
+      const landingEl = document.getElementById('landingPage');
+      if (landingEl && !landingEl.classList.contains('hidden')) return;
+
       const timeoutMs = (v5Settings.sleepTimeoutMins || 5) * 60 * 1000;
       const warnDelay = Math.max(0, timeoutMs - 10000);
 
@@ -11386,130 +11625,6 @@ await migo.sendFace("SMILE");`;
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // PERSONALITY SYSTEM
-    // ═══════════════════════════════════════════════════════════════
-    const PERSONALITY_TRAITS = [
-      { id: 'safety_first', emoji: '🛡️', label: 'Safety-First', desc: 'Cautious, safety-aware, responsible' },
-      { id: 'friendly', emoji: '🤗', label: 'Friendly & Warm', desc: 'Warm, caring, kind-hearted' },
-      { id: 'curious', emoji: '🧠', label: 'Curious & Intellectual', desc: 'Inquisitive, loves learning' },
-      { id: 'playful', emoji: '😄', label: 'Playful & Funny', desc: 'Lighthearted, jokes and puns' },
-      { id: 'calm', emoji: '🌙', label: 'Calm & Soothing', desc: 'Relaxed, gentle, peaceful' },
-      { id: 'energetic', emoji: '⚡', label: 'Energetic', desc: 'Enthusiastic, upbeat, vivid' },
-      { id: 'coach', emoji: '🏅', label: 'Supportive Coach', desc: 'Encouraging, goal-oriented' },
-      { id: 'storyteller', emoji: '📖', label: 'Storyteller', desc: 'Narrative, vivid, imaginative' },
-      { id: 'philosopher', emoji: '🔭', label: 'Philosopher', desc: 'Thoughtful, reflective, deep' },
-      { id: 'creative', emoji: '🎨', label: 'Creative & Artistic', desc: 'Expressive, innovative, aesthetic' },
-    ];
-
-    const TONE_OPTIONS = ['Casual', 'Formal', 'Child-Friendly', 'Teen', 'Adult'];
-    const LENGTH_OPTIONS = ['Brief', 'Balanced', 'Detailed'];
-
-    let personalityState = { traits: [], tone: 'Casual', length: 'Brief' };
-
-    function loadPersonalityState() {
-      const stored = localStorage.getItem('migo_aiona_personality');
-      if (stored) {
-        try { Object.assign(personalityState, JSON.parse(stored)); } catch (e) { }
-      }
-    }
-
-    function savePersonalityState() {
-      localStorage.setItem('migo_aiona_personality', JSON.stringify(personalityState));
-    }
-
-    function resetPersonality() {
-      personalityState = { traits: [], tone: 'Casual', length: 'Brief' };
-      savePersonalityState();
-      renderPersonalityUI();
-    }
-
-    function toggleTrait(id) {
-      const idx = personalityState.traits.indexOf(id);
-      if (idx === -1) personalityState.traits.push(id);
-      else personalityState.traits.splice(idx, 1);
-      savePersonalityState();
-      renderPersonalityUI();
-    }
-
-    function setTone(tone) {
-      personalityState.tone = tone;
-      savePersonalityState();
-      renderPersonalityUI();
-    }
-
-    function setLength(len) {
-      personalityState.length = len;
-      savePersonalityState();
-      renderPersonalityUI();
-    }
-
-    function renderPersonalityUI() {
-      loadPersonalityState();
-
-      // Traits
-      const grid = document.getElementById('personalityTraitGrid');
-      if (grid) {
-        grid.innerHTML = '';
-        PERSONALITY_TRAITS.forEach(t => {
-          const active = personalityState.traits.includes(t.id);
-          const btn = document.createElement('button');
-          btn.title = t.desc;
-          btn.className = `px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all active:scale-95 cursor-pointer flex items-center gap-1 ${active ? 'bg-amber-500/30 border-amber-400/60 text-amber-300' : 'bg-black/20 border-white/10 text-white/50 hover:text-white hover:border-white/30'}`;
-          btn.innerHTML = `${t.emoji} ${t.label}`;
-          btn.onclick = () => toggleTrait(t.id);
-          grid.appendChild(btn);
-        });
-      }
-
-      // Tone
-      const toneGroup = document.getElementById('personalityToneGroup');
-      if (toneGroup) {
-        toneGroup.innerHTML = '';
-        TONE_OPTIONS.forEach(tone => {
-          const active = personalityState.tone === tone;
-          const btn = document.createElement('button');
-          btn.className = `px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-all active:scale-95 cursor-pointer ${active ? 'bg-teal-600 border-teal-400 text-white' : 'bg-black/20 border-white/10 text-white/50 hover:text-white'}`;
-          btn.textContent = tone;
-          btn.onclick = () => setTone(tone);
-          toneGroup.appendChild(btn);
-        });
-      }
-
-      // Length
-      const lengthGroup = document.getElementById('personalityLengthGroup');
-      if (lengthGroup) {
-        lengthGroup.innerHTML = '';
-        LENGTH_OPTIONS.forEach(len => {
-          const active = personalityState.length === len;
-          const btn = document.createElement('button');
-          btn.className = `flex-1 py-1.5 rounded-xl text-[10px] font-bold border transition-all active:scale-95 cursor-pointer ${active ? 'bg-purple-600 border-purple-400 text-white' : 'bg-black/20 border-white/10 text-white/50 hover:text-white'}`;
-          btn.textContent = len;
-          btn.onclick = () => setLength(len);
-          lengthGroup.appendChild(btn);
-        });
-      }
-    }
-
-    function getPersonalityPromptAddition() {
-      loadPersonalityState();
-      const lines = [];
-      if (personalityState.traits.length > 0) {
-        const traitLabels = personalityState.traits.map(id => {
-          const t = PERSONALITY_TRAITS.find(t => t.id === id);
-          return t ? `${t.emoji} ${t.label} (${t.desc})` : id;
-        });
-        lines.push(`PERSONALITY DIRECTIVE: You have the following active personality traits: ${traitLabels.join(', ')}. Let these traits naturally shape how you communicate.`);
-      }
-      lines.push(`TONE DIRECTIVE: Use a ${personalityState.tone} tone in all responses.`);
-      const lengthMap = { Brief: '2-3 sentences', Balanced: '3-5 sentences', Detailed: '5-8 sentences' };
-      lines.push(`RESPONSE LENGTH DIRECTIVE: Keep responses ${lengthMap[personalityState.length] || '2-3 sentences'} long.`);
-      return lines.join('\n');
-    }
-
-    // Initialize personality
-    loadPersonalityState();
-
-    // ═══════════════════════════════════════════════════════════════
     // PATCH aionaSendMessageText TO INJECT PERSONALITY
     // ═══════════════════════════════════════════════════════════════
     // We patch by overriding the personality injection into the system prompt
@@ -11779,6 +11894,8 @@ Coding Rules for <super-aiona-script> & <super-aiona-cpp>:
 4. Polling sensor loops: always include \`await migo.wait(100)\` inside the while loop to avoid freezing.
 5. The script has a 120-second max runtime. Always include exit conditions in loops.
 6. Use \`log()\` generously to show progress in the terminal console.
+7. SCRIPT COMPLETENESS & SYNTAX: Always write the complete JavaScript script and ensure ALL parentheses, brackets, quotes, and loops are fully closed before writing \`</super-aiona-script>\`. Never leave code half-written.
+8. DATE & TIME / CLOCK TASKS: When displaying time or date on OLED, use standard JavaScript \`new Date().toLocaleTimeString()\` and \`new Date().toLocaleDateString()\` and refresh with \`await migo.oledShow(); await migo.wait(1000);\`.
 
 Example 1 - Marco Polo game (OLED + Ultrasonic):
 "Coding it now! Watch the AI Code Engine terminal! 
@@ -11975,7 +12092,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
           payloadContents,
           aionaPrompt,
           0.8,
-          2048,
+          4096,
           (accumulatedText) => {
             setAionaState('thinking');
             const textStreamEl = aionaStreamBubble.querySelector('.aiona-text-stream');
@@ -11993,9 +12110,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
               cleanStreaming = cleanStreaming.replace(/<\/?(aiona-commands|aiona_commands|aiona-command|aionacommands|migo-commands)\b[^>]*?>?/gi, "");
               cleanStreaming = cleanStreaming.replace(/\[\s*\]/g, "");
               cleanStreaming = cleanStreaming.replace(/\{\s*\}/g, "");
-              // ✅ FIX Bug#1: Use SPECIFIC super-aiona-script strippers during streaming preview.
-              //    Old line was: /<\/?aiona[\s\S]*$/gi  — this wildcard matched <super-aiona-script> and
-              //    wiped everything from that tag to end-of-string, so finalText callback never received the tag.
+              // Specific super-aiona-script strippers during streaming preview
               cleanStreaming = cleanStreaming.replace(/<super-aiona-script>[\s\S]*?<\/super-aiona-script>/gi, "");
               cleanStreaming = cleanStreaming.replace(/<super-aiona-script>[\s\S]*$/gi, "");
               cleanStreaming = cleanStreaming.replace(/<super-aiona-cpp>[\s\S]*?<\/super-aiona-cpp>/gi, "");
@@ -12013,24 +12128,45 @@ Choose the tag that best represents the tone of your text. Do not include any ot
             let emotion = 'HAPPY';
             let fullResponse = finalText.trim();
 
-            // ✅ FIX STEP 1: Extract and execute <super-aiona-script> FIRST, before any cleaning strips it
+            // Extract <super-aiona-script> FIRST, before any cleaning strips it
             let extractedSuperCode = null;
             let extractedCppCode = null;
             const superScriptTagMatch = fullResponse.match(/<super-aiona-script>([\s\S]*?)(?:<\/super-aiona-script>|$)/i);
             const superCppTagMatch = fullResponse.match(/<super-aiona-cpp>([\s\S]*?)(?:<\/super-aiona-cpp>|$)/i);
 
-            if (superScriptTagMatch) {
+            if (superScriptTagMatch && superScriptTagMatch[1].trim()) {
               extractedSuperCode = superScriptTagMatch[1].trim();
+            } else {
+              // Fallback: match markdown javascript fence if tags were omitted
+              const mdJsMatch = fullResponse.match(/```(?:javascript|js)\b([\s\S]*?)```/i);
+              if (mdJsMatch && mdJsMatch[1].trim()) {
+                extractedSuperCode = mdJsMatch[1].trim();
+              }
             }
-            if (superCppTagMatch) {
+
+            if (superCppTagMatch && superCppTagMatch[1].trim()) {
               extractedCppCode = superCppTagMatch[1].trim();
             } else {
-              extractedCppCode = extractedSuperCode; // fallback
+              // Fallback: match markdown cpp/arduino fence
+              const mdCppMatch = fullResponse.match(/```(?:cpp|c\+\+|arduino)\b([\s\S]*?)```/i);
+              if (mdCppMatch && mdCppMatch[1].trim()) {
+                extractedCppCode = mdCppMatch[1].trim();
+              } else {
+                extractedCppCode = extractedSuperCode; // fallback
+              }
             }
 
             // Strip tags from response text so they don't appear in the chat bubble
             fullResponse = fullResponse.replace(/<super-aiona-script>[\s\S]*?(?:<\/super-aiona-script>|$)/gi, "").trim();
             fullResponse = fullResponse.replace(/<super-aiona-cpp>[\s\S]*?(?:<\/super-aiona-cpp>|$)/gi, "").trim();
+
+            // Clean code artifacts from extractedSuperCode
+            if (extractedSuperCode) {
+              extractedSuperCode = extractedSuperCode
+                .replace(/^```[\w]*\n?/gm, '')
+                .replace(/```\s*$/gm, '')
+                .trim();
+            }
 
             // Launch Super AIONA task immediately if JS code is present
             if (extractedSuperCode && window.SuperAIONATaskEngine) {

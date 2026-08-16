@@ -1,12 +1,15 @@
 /*
- * Version: 7.6.7
+ * Version: 7.7.1
  * Change Log:
+ * [Aug 17, 2026 12:00 AM] Fix: Updated CACHE_NAME to migo-controller-cache-v7.7.1 to force cache invalidation and load repaired syntax & responsive landing page.
+ * [Aug 16, 2026 11:38 PM] Fix: Updated CACHE_NAME to migo-controller-cache-v7.7.0 to force cache invalidation and load responsive landing page & error-guarded initialization.
+ * [Aug 16, 2026 11:35 PM] Fix: Updated CACHE_NAME to migo-controller-cache-v7.6.9 to trigger cache invalidation and load updated AI code engine & UI controllers.
  * [Aug 16, 2026 10:45 PM] Fix: Updated CACHE_NAME to migo-controller-cache-v7.6.7 to invalidate PWA service worker cache for OLED OTA update fix.
  * [Aug 16, 2026 10:29 PM] Fix: Updated CACHE_NAME to migo-controller-cache-v7.6.6 to trigger automatic PWA cache invalidation and pre-cache updated OTA and landing page modules.
  */
 
-// MIGO Controller Service Worker v7.6.7
-const CACHE_NAME = 'migo-controller-cache-v7.6.7';
+// MIGO Controller Service Worker v7.7.1
+const CACHE_NAME = 'migo-controller-cache-v7.7.1';
 
 // Core local assets to cache on install
 const STATIC_ASSETS = [
