@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 7.6.6
+  MIGO Web Controller | Version: 7.6.7
   Change Log:
+  [Aug 16, 2026 10:45 PM] Fix: Restored real-time "Updating... n%" OLED status display & progress streaming during wireless OTA firmware flashing.
   [Aug 16, 2026 10:10 PM] Fix & New Feature: Restored ultrasonic hand-swipe time/date trigger on Landing Page by keeping CMD:LANDING:1 active; added downloaded firmware binary memory caching, 3-attempt automated OTA retry protocol, and flash progress resume feature.
   [Aug 09, 2026 10:22 PM] Fix: Robot Landing Idle Animations setting (OFF) now truly stops firmware animations. Both sendLandingStateToMigo and keepAliveMotorSilence were sending CMD:LANDING:1 (which triggers firmware's autonomous loop) even when animations were disabled. Fixed to send CMD:LANDING:0 when setting is OFF.
   [Aug 09, 2026 10:15 PM] UI: Improved AIONA header and chat bar responsiveness. Toggle buttons now group into a centered pill container on mobile; input/send row gets full-width. Settings header now stacks symmetrically on mobile.
   [Aug 09, 2026 3:28 PM] Fix: Restored the 'Live Code Editor & Terminal' panel in the AI Code Engine modal. C++ code viewer, elapsed timer, and Run Code button are fully functional again.
-  [Aug 09, 2026 3:22 PM] Fix: Corrected STT word/phrase repetition bug in aionaManualRecognition. Loop now starts at e.resultIndex instead of 0, and final/interim results are tracked separately to prevent re-appending already-processed speech chunks.
 -->
 
 <!DOCTYPE html>
@@ -9827,18 +9827,21 @@ await migo.sendFace("SMILE");`;
 
     // Helper: write OLED update message directly to the MIGO's write characteristic
     // during OTA safely without contending with the main GATT queue.
+    // Helper: write OLED update message directly to the MIGO's write characteristic
+    // during OTA safely without contending with the main GATT queue.
     async function _sendOtaOledUpdate(activeMigo, pct, label) {
       if (!activeMigo?.writeChar) return;
       const enc = new TextEncoder();
       const line1 = label || 'Updating...';
       const line2 = `${pct}%`;
+      const pctX = pct >= 100 ? 40 : (pct >= 10 ? 46 : 52);
       try {
         await activeMigo.writeChar.writeValueWithoutResponse(enc.encode('CMD:OLED_CLEAR'));
-        await new Promise(r => setTimeout(r, 25));
-        await activeMigo.writeChar.writeValueWithoutResponse(enc.encode(`CMD:OLED_PRINT:0:0:2:${line1}`));
-        await new Promise(r => setTimeout(r, 25));
-        await activeMigo.writeChar.writeValueWithoutResponse(enc.encode(`CMD:OLED_PRINT:30:28:2:${line2}`));
-        await new Promise(r => setTimeout(r, 25));
+        await new Promise(r => setTimeout(r, 20));
+        await activeMigo.writeChar.writeValueWithoutResponse(enc.encode(`CMD:OLED_PRINT:28:6:1:${line1}`));
+        await new Promise(r => setTimeout(r, 20));
+        await activeMigo.writeChar.writeValueWithoutResponse(enc.encode(`CMD:OLED_PRINT:${pctX}:24:2:${line2}`));
+        await new Promise(r => setTimeout(r, 20));
         await activeMigo.writeChar.writeValueWithoutResponse(enc.encode('CMD:OLED_SHOW'));
       } catch (e) {
         console.warn('[OTA OLED] Could not send OLED update:', e.message);
@@ -9905,6 +9908,10 @@ await migo.sendFace("SMILE");`;
           await otaChar.writeValue(new TextEncoder().encode(`START:${totalBytes}`));
           await new Promise(r => setTimeout(r, 200));
 
+          // Display "Updating... 0%" on OLED immediately after START handshake
+          try { await _sendOtaOledUpdate(activeMigo, 0, 'Updating...'); } catch (e) {}
+          let lastOledPct = 0;
+
           percentText.innerText = '0%';
           progressBar.style.width = '0%';
           progressBar.className = "bg-gradient-to-r from-indigo-500 to-teal-400 h-full transition-all duration-100";
@@ -9937,6 +9944,13 @@ await migo.sendFace("SMILE");`;
             progressBar.style.width = `${progress}%`;
             statusText.innerText = `Flashing: ${Math.round((i + chunk.length) / 1024)} / ${Math.round(totalBytes / 1024)} KB (Attempt ${attempt}/${MAX_OTA_ATTEMPTS})`;
 
+            // Stream OLED progress every 10% milestone
+            const milestone = Math.floor(progress / 10) * 10;
+            if (milestone >= lastOledPct + 10 && milestone < 100) {
+              lastOledPct = milestone;
+              try { await _sendOtaOledUpdate(activeMigo, milestone, 'Updating...'); } catch (e) {}
+            }
+
             // Adaptive pacing delay (12ms) allows ESP32 flash write to commit cleanly
             await new Promise(r => setTimeout(r, 12));
           }
@@ -9957,6 +9971,14 @@ await migo.sendFace("SMILE");`;
           if (resumeBtn) resumeBtn.classList.add('hidden');
           refreshOtaLastFlashedBadge();
           refreshOtaVersionStatus();
+
+          // Safely send final completion screen to OLED
+          try {
+            await _sendOtaOledUpdate(activeMigo, 100, 'Done!');
+          } catch (e) {
+            console.log('[OTA] Post-flash GATT disconnect expected during robot restart.');
+          }
+
           btn.disabled = false;
           btn.classList.remove('opacity-50', 'cursor-not-allowed');
           isOtaActive = false;
@@ -9967,6 +9989,7 @@ await migo.sendFace("SMILE");`;
           // If error occurs when progress is 100%, it is just the expected GATT disconnect on reboot
           if (progressBar && progressBar.style.width === '100%') {
             console.log('[OTA] Suppressing expected BLE disconnect error on reboot:', err.message);
+            try { await _sendOtaOledUpdate(activeMigo, 100, 'Done!'); } catch (e) {}
             btn.disabled = false;
             btn.classList.remove('opacity-50', 'cursor-not-allowed');
             isOtaActive = false;
