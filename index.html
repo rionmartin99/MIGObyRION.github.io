@@ -1155,9 +1155,7 @@
                   Right at speed 0 to 255.</li>
                 <li><b>Stop Moving (stop_robot):</b> Cuts off power to the drive motors, stopping MIGO immediately.</li>
                 <li><b>Wait [Time] ms (wait_time):</b> Pauses the program for a specific number of milliseconds (e.g.,
-                  1000 ms is 1 second). [Inventor Mode]</li>
-                <li><b>Wait [Time] seconds (wait_time_s):</b> Pauses the program for a specific number of seconds.
-                  [Explorer Mode]</li>
+                  1000 ms is 1 second).</li>
                 <li><b>Play Tone on [Plug] Freq [Hz] for [ms] (buzzer_tone):</b> Plays a sound at a custom frequency (in
                   Hz) on Plug D or C for a set duration.</li>
                 <li><b>Turn Servo on [Plug] to [Percentage] % (servo_motor):</b> Rotates a servo motor connected to
@@ -1182,14 +1180,10 @@
                   brightness percentage (0% to 100%).</li>
                 <li><b>Read Digital Value on [Plug] (read_digital):</b> Low-level digital read from Plug A, B, or C
                   (returns 0 or 1).</li>
-                <li><b>Read Digital on Pin [Pin] (read_digital_custom):</b> Low-level digital read from any custom GPIO
-                  pin (0-39) on the ESP32.</li>
                 <li><b>Read Digital on Pin [Variable] (read_digital_var):</b> Read digital value using a declared
                   variable for the pin.</li>
                 <li><b>Read Analog Value on [Plug] (read_analog):</b> Low-level raw analog read from Plug A, B, or C
                   (returns 0 to 4095).</li>
-                <li><b>Read Analog on Pin [Pin] (read_analog_custom):</b> Low-level raw analog read from any custom ADC
-                  pin (0-39) on the ESP32.</li>
                 <li><b>Read Analog on Pin [Variable] (read_analog_var):</b> Read analog value using a declared variable
                   for the pin.</li>
                 <li><b>HIGH/LOW Level (digital_level):</b> Returns HIGH (1) or LOW (0) for easy logic comparisons.</li>
@@ -1203,26 +1197,17 @@
               <ul class="list-disc pl-4 text-xs space-y-2 text-teal-100">
                 <li><b>Set [Plug] to [Mode] (setup_pin):</b> Configures Plug A, B, C, or D pin mode as Input (read) or
                   Output (write).</li>
-                <li><b>Set Custom Pin [Pin] to [Mode] (setup_pin_custom):</b> Configures a custom GPIO pin (0-39) as
-                  Input or Output mode.</li>
                 <li><b>Set Pin [Variable] to [Mode] (setup_pin_var):</b> Configures pin mode using a declared variable
                   for the pin.</li>
                 <li><b>Write Digital [ON/OFF] to [Plug] (digital_write):</b> Outputs High (ON) or Low (OFF) voltage to
                   Plug D or C.</li>
-                <li><b>Write Digital [ON/OFF] to Pin [Pin] (digital_write_custom):</b> Outputs High or Low voltage to a
-                  custom GPIO pin (0-39).</li>
                 <li><b>Write Digital [ON/OFF] to Pin [Variable] (digital_write_var):</b> Outputs High or Low voltage
                   using a declared variable for the pin.</li>
                 <li><b>Write Analog [Power] to [Plug] (analog_write):</b> Outputs variable power (PWM 0 to 255) to Plug
                   D or C.</li>
-                <li><b>Write Analog [Power] to Pin [Pin] (analog_write_custom):</b> Outputs variable power (PWM 0 to
-                  255) to a custom GPIO pin (0-39).</li>
                 <li><b>Write Analog power to Pin [Variable] (analog_write_var):</b> Outputs PWM power using a declared
                   variable for the pin.</li>
-                <li><b>Turn Built-in LED [ON/OFF] (control_led):</b> Controls the blue onboard status LED (GPIO Pin 2).
-                  [Inventor Mode]</li>
-                <li><b>Turn Light [ON/OFF] (control_led_explorer):</b> Controls the built-in status light. [Explorer
-                  Mode]</li>
+                <li><b>Turn Built-in LED [ON/OFF] (control_led):</b> Controls the blue onboard status LED (GPIO Pin 2).</li>
                 <li><b>Init OLED Display SDA [SDA] SCL [SCL] (oled_init):</b> Set up the 0.96 OLED display using SDA and
                   SCL pins.</li>
                 <li><b>Clear OLED Display (oled_clear):</b> Clears the contents on the OLED screen buffer.</li>
@@ -1269,9 +1254,7 @@
                 <li><b>Call function [Name] (call_func):</b> Runs the group of blocks defined under that function name.
                 </li>
                 <li><b>Print [Value] to monitor (print_serial):</b> Prints a value or message to the Serial Monitor
-                  console. [Inventor Mode]</li>
-                <li><b>Say [Value] (print_serial_explorer):</b> Prints a custom message to the console. [Explorer Mode]
-                </li>
+                  console.</li>
               </ul>
             </div>
           </div>
