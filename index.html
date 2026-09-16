@@ -1,11 +1,11 @@
 <!-- 
-  MIGO Web Controller | Version: 7.7.5
+  MIGO Web Controller | Version: 7.5.2
   Change Log:
+  [Sep 16, 2026 10:18 AM] Fix: Enabled L2 turbo boost to bypass Settings max speed slider (v5MaxSpeed) and stream full 250 PWM directly to motors.
+  [Sep 16, 2026 09:42 AM] Feature: Added gamepad D-Pad integration mapped to MIGO D-Pad controls (Up/Down/Left/Right/Stop) with active button visual feedback.
+  [Sep 16, 2026 09:35 AM] Feature: Integrated Gamepad controls with simulated joystick driving, L2 aggressive turbo forward (250 PWM), and Right Stick analog servo control.
   [Aug 29, 2026 05:47 PM] Fix: Modified digital_write, digital_write_custom, and digital_write_var blocks to send primitive integer payloads instead of AST objects for their values, preventing firmware misinterpretation that ignored these commands.
   [Aug 29, 2026 05:17 PM] Feature: Added 'HIGH/LOW' (digital_level) block to Logic and Sensors toolboxes for easier logic operations in Inventor Mode.
-  [Aug 29, 2026 05:12 PM] Fix: Changed read_digital, read_digital_custom, and read_digital_var block output type from Boolean to Number so they are accepted in both slots of the logic_compare (comparison) block in Inventor Mode.
-  [Aug 28, 2026 06:12 PM] Feature: Replaced free-type number field in all custom pin blocks with a curated safe-GPIO dropdown (Plug A/B/C/D + GPIO 4/13/16/17/18/19/21/22/23/36/39).
-  [Aug 28, 2026 06:12 PM] Fix: Added missing PM/DW/AW simulator handlers so custom pins and variable-assigned pins are no longer silently skipped in Inventor Mode simulation.
 -->
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v7.2.0 (Super AIONA)</title>
+  <title>MIGO Robot Controller v7.5.2 (Super AIONA + Gamepad)</title>
 
   <!-- PWA Manifest & Theme -->
   <link rel="manifest" href="./manifest.json">
@@ -1207,7 +1207,8 @@
                   D or C.</li>
                 <li><b>Write Analog power to Pin [Variable] (analog_write_var):</b> Outputs PWM power using a declared
                   variable for the pin.</li>
-                <li><b>Turn Built-in LED [ON/OFF] (control_led):</b> Controls the blue onboard status LED (GPIO Pin 2).</li>
+                <li><b>Turn Built-in LED [ON/OFF] (control_led):</b> Controls the blue onboard status LED (GPIO Pin 2).
+                </li>
                 <li><b>Init OLED Display SDA [SDA] SCL [SCL] (oled_init):</b> Set up the 0.96 OLED display using SDA and
                   SCL pins.</li>
                 <li><b>Clear OLED Display (oled_clear):</b> Clears the contents on the OLED screen buffer.</li>
@@ -1687,7 +1688,7 @@
           <div class="text-[10px] text-white/60 leading-relaxed space-y-1">
             <p>1. Type a natural language command in the chat (e.g., "MIGO, sweep the ultrasonic sensor").</p>
             <p>2. AIONA will instantly generate the code and execute it in the background.</p>
-            <p>3. You can monitor the live execution logs above or write your own custom scripts in the editor.</p>
+            <p>3. You can monitor the live execution logs above.</p>
             <p>4. Use the <strong class="text-amber-400">HALT AI CODE</strong> button below or in the header to
               instantly stop running tasks.</p>
           </div>
@@ -1801,6 +1802,11 @@
           class="hidden w-40 h-40 landscape:w-48 landscape:h-48 relative bg-black/30 rounded-full border-[3px] border-white/20 flex items-center justify-center touch-none shadow-inner">
           <div id="joystickKnob"
             class="w-16 h-16 landscape:w-20 landscape:h-20 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.4)] absolute pointer-events-none transition-transform duration-75">
+          </div>
+          <!-- L2 Turbo Badge -->
+          <div id="migoTurboBadge"
+            class="hidden absolute top-2 bg-amber-500 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider shadow-lg animate-pulse pointer-events-none z-10">
+            ⚡ L2 TURBO 250
           </div>
         </div>
 
@@ -2273,6 +2279,14 @@
           class="glass-panel py-1.5 px-2.5 md:px-3 text-xs font-bold flex items-center justify-center gap-1 hover:bg-white/20 transition-all active:scale-95">
           <i class="ph-bold ph-bluetooth text-sm"></i> <span class="hidden md:inline">Connect</span>
         </button>
+        <!-- Gamepad Indicator Badge -->
+        <div id="migoGamepadBadge"
+          class="glass-panel py-1.5 px-2.5 md:px-3 text-xs font-bold flex items-center justify-center gap-1.5 border border-white/10 text-white/50 transition-all cursor-pointer select-none"
+          onclick="triggerGamepadHelpToast()"
+          title="PS4 / Universal Gamepad Status">
+          <i id="migoGamepadIcon" class="ph-bold ph-game-controller text-sm text-slate-400"></i>
+          <span id="migoGamepadLabel" class="hidden lg:inline text-[11px] font-mono">No Gamepad</span>
+        </div>
       </div>
     </header>
 
@@ -4316,6 +4330,318 @@
       joyContainer.addEventListener('touchcancel', releaseJoy);
     } else {
       console.warn('[v7.7.1] joystickContainer not found — joystick events deferred until app loads.');
+    }
+
+    // =========================================================================
+    // MIGO GAMEPAD INTEGRATION SUBSYSTEM (v7.5.0)
+    // Supports PS4 DualShock 4 & Universal HTML5 Gamepads
+    // - Left Stick: Simulates MIGO Arcade Joystick (animates joyKnob in real-time)
+    // - L2 Trigger: Aggressive Forward Turbo Boost at PWM 250
+    // - Right Stick: Controls MIGO Arm Servo movement & slider (0% to 100%)
+    // =========================================================================
+    let migoGamepadActive = false;
+    let migoGamepadIndex = -1;
+    let migoGamepadL2Active = false;
+    let migoGamepadStickDriving = false;
+    let migoGamepadDpadActive = false;
+    let migoGamepadLastDpadCmd = null;
+    let migoLastServoBleSendTime = 0;
+
+    function initMigoGamepadSubsystem() {
+      window.addEventListener('gamepadconnected', (e) => {
+        migoGamepadIndex = e.gamepad.index;
+        migoGamepadActive = true;
+        updateGamepadBadgeUI(e.gamepad);
+        // Automatically activate joystick mode visual display
+        if (typeof setControlMode === 'function') setControlMode('joy');
+        showGamepadToast(`🎮 ${e.gamepad.id.substring(0, 24)} connected!`);
+      });
+
+      window.addEventListener('gamepaddisconnected', (e) => {
+        if (migoGamepadIndex === e.gamepad.index) {
+          migoGamepadActive = false;
+          migoGamepadIndex = -1;
+          updateGamepadBadgeUI(null);
+          // Safety halt if disconnected while moving
+          if (joyActive) {
+            releaseJoy();
+          }
+          if (migoGamepadDpadActive) {
+            migoGamepadDpadActive = false;
+            migoGamepadLastDpadCmd = null;
+            ['btn-up', 'btn-down', 'btn-left', 'btn-right'].forEach(id => {
+              document.getElementById(id)?.classList.remove('key-pressed');
+            });
+            if (typeof stopDpadHeartbeat === 'function') stopDpadHeartbeat();
+          }
+          showGamepadToast(`🎮 Controller disconnected.`);
+        }
+      });
+
+      // Start continuous RAF polling
+      requestAnimationFrame(migoGamepadPollLoop);
+    }
+
+    function updateGamepadBadgeUI(pad) {
+      const badge = document.getElementById('migoGamepadBadge');
+      const icon = document.getElementById('migoGamepadIcon');
+      const label = document.getElementById('migoGamepadLabel');
+      if (!badge || !icon || !label) return;
+
+      if (pad) {
+        badge.className = "glass-panel py-1.5 px-2.5 md:px-3 text-xs font-bold flex items-center justify-center gap-1.5 border border-teal-400/40 text-teal-300 shadow-[0_0_10px_rgba(20,184,166,0.3)] transition-all cursor-pointer select-none bg-teal-950/40";
+        icon.className = "ph-bold ph-game-controller text-sm text-teal-400 animate-pulse";
+        const shortId = pad.id.toLowerCase().includes('wireless controller') ? 'PS4 Controller' : (pad.id.length > 14 ? pad.id.substring(0, 14) + '...' : pad.id);
+        label.textContent = shortId;
+      } else {
+        badge.className = "glass-panel py-1.5 px-2.5 md:px-3 text-xs font-bold flex items-center justify-center gap-1.5 border border-white/10 text-white/50 transition-all cursor-pointer select-none";
+        icon.className = "ph-bold ph-game-controller text-sm text-slate-400";
+        label.textContent = "No Gamepad";
+      }
+    }
+
+    function showGamepadToast(msg) {
+      if (typeof printToConsole === 'function') {
+        printToConsole(msg);
+      }
+    }
+
+    function triggerGamepadHelpToast() {
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      let found = false;
+      for (let i = 0; i < pads.length; i++) {
+        if (pads[i]) { found = true; break; }
+      }
+      if (found) {
+        showGamepadToast("🎮 Gamepad active! Left Stick: Drive | L2: Turbo 250 | Right Stick: Servo Arm");
+      } else {
+        showGamepadToast("🎮 No gamepad detected. Connect via Bluetooth/USB & press any button to wake.");
+      }
+    }
+
+    function migoGamepadPollLoop() {
+      const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+      let activePad = null;
+
+      if (migoGamepadIndex !== -1 && gamepads[migoGamepadIndex]) {
+        activePad = gamepads[migoGamepadIndex];
+      } else {
+        for (let i = 0; i < gamepads.length; i++) {
+          if (gamepads[i]) {
+            activePad = gamepads[i];
+            migoGamepadIndex = i;
+            migoGamepadActive = true;
+            updateGamepadBadgeUI(activePad);
+            break;
+          }
+        }
+      }
+
+      const turboBadge = document.getElementById('migoTurboBadge');
+
+      if (activePad) {
+        // Compute dynamic maximum radius for on-screen knob
+        let maxDist = 45;
+        if (joyContainer && joyKnob) {
+          let rect = joyContainer.getBoundingClientRect();
+          if (rect.width > 0) {
+            maxDist = (rect.width / 2) - (joyKnob.offsetWidth / 2);
+          }
+        }
+
+        // -------------------------------------------------------------
+        // 1. L2 TRIGGER: AGGRESSIVE MOVE FORWARD AT PWM 250 SPEED
+        // Button index 6 = L2 trigger on Standard / PS4 controller
+        // -------------------------------------------------------------
+        const btnL2 = activePad.buttons.length > 6 ? activePad.buttons[6] : null;
+        const isL2Pressed = btnL2 && (btnL2.pressed || btnL2.value > 0.15);
+
+        if (isL2Pressed && !isDragging) {
+          // Switch to joystick view if hidden so user sees animation
+          const joyCont = document.getElementById('joystickContainer');
+          if (joyCont && joyCont.classList.contains('hidden') && typeof setControlMode === 'function') {
+            setControlMode('joy');
+          }
+
+          migoGamepadL2Active = true;
+          // Aggressive forward move at PWM 250 speed
+          lastLeft = 250;
+          lastRight = 250;
+          joyActive = true;
+
+          // Animate visual knob full forward with glowing turbo aesthetic
+          if (joyKnob) {
+            const dy = joyYInverted ? maxDist : -maxDist;
+            joyKnob.style.transform = `translate(0px, ${dy}px)`;
+            joyKnob.style.boxShadow = '0 0 25px #f59e0b, 0 0 50px rgba(245, 158, 11, 0.6)';
+          }
+          if (turboBadge) turboBadge.classList.remove('hidden');
+
+        } else if (migoGamepadL2Active && !isL2Pressed) {
+          // L2 was just released
+          migoGamepadL2Active = false;
+          if (turboBadge) turboBadge.classList.add('hidden');
+          if (joyKnob) joyKnob.style.boxShadow = '';
+
+          // Check if left stick is also neutral
+          const ax0 = activePad.axes.length > 0 ? activePad.axes[0] : 0;
+          const ax1 = activePad.axes.length > 1 ? activePad.axes[1] : 0;
+          if (Math.hypot(ax0, ax1) < 0.15 && !isDragging) {
+            releaseJoy();
+          }
+        }
+
+        // -------------------------------------------------------------
+        // 2. LEFT JOYSTICK: SIMULATED MIGO JOYSTICK DRIVE
+        // -------------------------------------------------------------
+        if (!migoGamepadL2Active && !isDragging) {
+          const rawLx = activePad.axes.length > 0 ? activePad.axes[0] : 0;
+          const rawLy = activePad.axes.length > 1 ? activePad.axes[1] : 0;
+          const dist = Math.hypot(rawLx, rawLy);
+          const DEADZONE = 0.15;
+
+          if (dist >= DEADZONE) {
+            // Auto switch to joystick view if hidden
+            const joyCont = document.getElementById('joystickContainer');
+            if (joyCont && joyCont.classList.contains('hidden') && typeof setControlMode === 'function') {
+              setControlMode('joy');
+            }
+
+            migoGamepadStickDriving = true;
+            const dx = rawLx * maxDist;
+            const dy = rawLy * maxDist;
+            const angle = Math.atan2(dy, dx);
+            const clampedDist = Math.min(dist * maxDist, maxDist);
+
+            // Animate physical on-screen knob
+            if (joyKnob) {
+              joyKnob.style.transform = `translate(${Math.cos(angle) * clampedDist}px, ${Math.sin(angle) * clampedDist}px)`;
+            }
+
+            // Calculate exact differential drive PWM for MIGO motors
+            const drive = calcArcadeDrive(dx, dy, maxDist);
+            lastLeft = drive.left;
+            lastRight = drive.right;
+            joyActive = true;
+
+          } else if (migoGamepadStickDriving) {
+            migoGamepadStickDriving = false;
+            releaseJoy();
+          }
+        }
+
+        // -------------------------------------------------------------
+        // 3. RIGHT JOYSTICK: SERVO SLIDER MOVEMENT
+        // Axis 3 = Right Stick Vertical (Up/Down)
+        // Axis 2 = Right Stick Horizontal (Left/Right)
+        // -------------------------------------------------------------
+        const rawRy = activePad.axes.length > 3 ? activePad.axes[3] : 0;
+        const rawRx = activePad.axes.length > 2 ? activePad.axes[2] : 0;
+        const SERVO_DEADZONE = 0.18;
+
+        // Prioritize vertical axis (push Up = increase, pull Down = decrease)
+        let stickDeflection = 0;
+        if (Math.abs(rawRy) >= SERVO_DEADZONE) {
+          stickDeflection = -rawRy; // Up is positive
+        } else if (Math.abs(rawRx) >= SERVO_DEADZONE) {
+          stickDeflection = rawRx;  // Right is positive
+        }
+
+        if (stickDeflection !== 0) {
+          // Auto-unlock servo arm if locked
+          if (servoLocked && typeof toggleServoLock === 'function') {
+            toggleServoLock();
+          }
+
+          const speedMagnitude = (Math.abs(stickDeflection) - SERVO_DEADZONE) / (1.0 - SERVO_DEADZONE);
+          const delta = Math.sign(stickDeflection) * speedMagnitude * 2.2;
+
+          const currentVal = typeof aionaLastServoPercent === 'number' ? aionaLastServoPercent : (parseInt(document.getElementById('servoSlider')?.value || 0));
+          const updatedVal = Math.max(0, Math.min(100, currentVal + delta));
+          const targetAngle = Math.round(updatedVal);
+
+          if (targetAngle !== currentVal) {
+            aionaLastServoPercent = targetAngle;
+            updateServoSliderUI(targetAngle);
+
+            const now = performance.now();
+            if (now - migoLastServoBleSendTime > 75) {
+              migoLastServoBleSendTime = now;
+              aionaSetServo(targetAngle);
+            }
+          }
+        }
+
+        // -------------------------------------------------------------
+        // 4. D-PAD BUTTONS: SIMULATED MIGO D-PAD CONTROLS
+        // Buttons 12=Up (F), 13=Down (B), 14=Left (L), 15=Right (R)
+        // -------------------------------------------------------------
+        const dpadUp = activePad.buttons.length > 12 && (activePad.buttons[12].pressed || activePad.buttons[12].value > 0.5);
+        const dpadDown = activePad.buttons.length > 13 && (activePad.buttons[13].pressed || activePad.buttons[13].value > 0.5);
+        const dpadLeft = activePad.buttons.length > 14 && (activePad.buttons[14].pressed || activePad.buttons[14].value > 0.5);
+        const dpadRight = activePad.buttons.length > 15 && (activePad.buttons[15].pressed || activePad.buttons[15].value > 0.5);
+
+        const dpadAny = dpadUp || dpadDown || dpadLeft || dpadRight;
+
+        if (dpadAny && !isDragging) {
+          // Switch to D-pad view if hidden so user sees active buttons
+          const dpadCont = document.getElementById('dpadContainer');
+          if (dpadCont && dpadCont.classList.contains('hidden') && typeof setControlMode === 'function') {
+            setControlMode('dpad');
+          }
+
+          let currentCmd = null;
+          let activeBtnId = null;
+
+          if (dpadUp) { currentCmd = 'F'; activeBtnId = 'btn-up'; }
+          else if (dpadDown) { currentCmd = 'B'; activeBtnId = 'btn-down'; }
+          else if (dpadLeft) { currentCmd = 'L'; activeBtnId = 'btn-left'; }
+          else if (dpadRight) { currentCmd = 'R'; activeBtnId = 'btn-right'; }
+
+          // Highlight on-screen active button
+          ['btn-up', 'btn-down', 'btn-left', 'btn-right'].forEach(id => {
+            const btnEl = document.getElementById(id);
+            if (btnEl) {
+              if (id === activeBtnId) btnEl.classList.add('key-pressed');
+              else btnEl.classList.remove('key-pressed');
+            }
+          });
+
+          if (currentCmd !== migoGamepadLastDpadCmd) {
+            migoGamepadLastDpadCmd = currentCmd;
+            migoGamepadDpadActive = true;
+            if (typeof startDpadHeartbeat === 'function') {
+              startDpadHeartbeat(currentCmd);
+            } else {
+              const finalCmd = typeof getDpadCmd === 'function' ? getDpadCmd(currentCmd) : currentCmd;
+              sendCmd(`CMD:DIR:${finalCmd}`);
+            }
+          }
+
+        } else if (migoGamepadDpadActive && !dpadAny) {
+          // All D-pad buttons released
+          migoGamepadDpadActive = false;
+          migoGamepadLastDpadCmd = null;
+          ['btn-up', 'btn-down', 'btn-left', 'btn-right'].forEach(id => {
+            document.getElementById(id)?.classList.remove('key-pressed');
+          });
+
+          if (typeof stopDpadHeartbeat === 'function') {
+            stopDpadHeartbeat();
+          } else {
+            sendCmd('CMD:DIR:S');
+          }
+        }
+      }
+
+      requestAnimationFrame(migoGamepadPollLoop);
+    }
+
+    // Initialize Gamepad subsystem on DOM ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initMigoGamepadSubsystem);
+    } else {
+      initMigoGamepadSubsystem();
     }
 
     // --- Blockly Logic ---
@@ -11427,12 +11753,18 @@ await migo.sendFace("SMILE");`;
     joyInterval = setInterval(() => {
       if (joyActive) {
         let l = lastLeft, r = lastRight;
-        // X-inversion swaps the turn component (left↔right motors sign relationship)
-        if (v5Settings.joyInvertLR) { l = lastRight; r = lastLeft; }
-        // Scale by max speed
-        const scale = v5MaxSpeed / 255;
-        l = Math.round(l * scale);
-        r = Math.round(r * scale);
+        // Check if L2 Turbo Boost is active — bypass max speed cap to deliver full 250 PWM
+        if (typeof migoGamepadL2Active !== 'undefined' && migoGamepadL2Active) {
+          l = 250;
+          r = 250;
+        } else {
+          // X-inversion swaps the turn component (left↔right motors sign relationship)
+          if (v5Settings.joyInvertLR) { l = lastRight; r = lastLeft; }
+          // Scale by max speed
+          const scale = v5MaxSpeed / 255;
+          l = Math.round(l * scale);
+          r = Math.round(r * scale);
+        }
 
         // Block forward joystick when obstacle is within threshold.
         // Both motors positive = moving forward; clamp to 0 to stop forward thrust.

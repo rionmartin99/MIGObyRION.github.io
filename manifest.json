@@ -1,7 +1,7 @@
 {
-  "name": "MIGO Robot Controller",
-  "short_name": "MIGO Controller",
-  "description": "Offline-capable web controller and Blockly programming workspace for MIGO & AIONA Robots.",
+  "name": "MIGO Robot Controller v7.5 (Super AIONA + Gamepad)",
+  "short_name": "MIGO v7.5",
+  "description": "Offline-capable web controller, Blockly programming workspace, and Gamepad input suite for MIGO & AIONA Robots.",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "any",
