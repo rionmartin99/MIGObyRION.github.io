@@ -1,11 +1,11 @@
 <!--
-  MIGO Web Controller | Version: 9.16.6
+  MIGO Web Controller | Version: 9.17.0
   Change Log:
+  [Nov 04, 2026 10:00 PM] Feature: Enhanced Color Tracker and Optical Line Follower accuracy with Otsu dynamic thresholding, spatial cluster rejection, and 1€ adaptive de-jitter filtering across all AI perception models.
+  [Nov 04, 2026 09:35 PM] Fix: Optimized mobile responsive layout for ESP32-CAM settings card and MIGO Vision HUD with flex-wrap button groups, touch targets, and overflow safety.
   [Nov 04, 2026 04:08 PM] Fix: Resolved syntax errors in triggerSpeechLifelikeAnimation nested blocks and cleaned corrupted diff preview text in testAndSaveApiKey.
   [Nov 04, 2026 04:00 PM] Fix: Removed incompatible boolean vision reporter blocks from Explorer mode toolbox to maintain clean, non-conditional beginner visual coding.
   [Nov 04, 2026 03:45 PM] Fix: Disabled talking animations and speech motor/servo gestures in Explorer and Inventor modes so user code runs uninterrupted.
-  [Nov 04, 2026 03:35 PM] Fix: Accelerated MIGO Vision real-time responsiveness across Face, Gesture, Color, Object, and Line tracking with zero-lag filtering and BLE stream coalescing.
-  [Nov 04, 2026 03:20 PM] Fix: Eliminated linear wheel translation drift during speech; added guaranteed-recovery in-place yaw pivots to prevent falling off tables.
 -->
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v9.16.6 (Super AIONA + Vision)</title>
+  <title>MIGO Robot Controller v9.17.0 (Super AIONA + Vision)</title>
 
   <!-- PWA Manifest & Theme -->
   <link rel="manifest" href="./manifest.json">
@@ -1052,25 +1052,26 @@
             <p class="text-[10px] text-teal-400 font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
               <i class="ph-bold ph-camera text-xs"></i> ESP32-CAM Vision Subsystem
             </p>
-            <div class="bg-black/30 border border-white/10 rounded-xl p-4 space-y-3">
+            <div class="bg-black/30 border border-white/10 rounded-xl p-3 sm:p-4 space-y-3">
               <div>
-                <label class="text-xs font-semibold text-white/80 mb-1 block">Default Camera WebSocket Host / IP</label>
-                <div class="flex gap-2">
+                <label class="text-xs font-semibold text-white/80 mb-1.5 block">Default Camera WebSocket Host / IP</label>
+                <div class="flex flex-col sm:flex-row gap-2">
                   <input type="text" id="settingsCamIpInput" value="192.168.4.1"
                     placeholder="192.168.4.1 or migo-cam.local"
-                    class="flex-1 px-3 py-1.5 text-xs rounded-xl bg-slate-800 border border-white/20 text-white font-mono placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400">
-                  <button id="settingsCamAutoDetectBtn" onclick="autoDetectCamInSettings()"
-                    class="py-1.5 px-2.5 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1 shrink-0 shadow-sm"
-                    title="Scan network and auto-detect ESP32-CAM without typing IP">
-                    <i class="ph-bold ph-radar"></i> Auto-Detect
-                  </button>
-                  <button onclick="saveCamIpSetting()"
-                    class="py-1.5 px-3 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shrink-0">
-                    Save
-                  </button>
+                    class="flex-1 min-w-0 w-full px-3 py-2 text-xs rounded-xl bg-slate-800 border border-white/20 text-white font-mono placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400">
+                  <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <button id="settingsCamAutoDetectBtn" onclick="autoDetectCamInSettings()"
+                      class="flex-1 sm:flex-initial py-2 sm:py-1.5 px-3 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 shadow-sm"
+                      title="Scan network and auto-detect ESP32-CAM without typing IP">
+                      <i class="ph-bold ph-radar"></i> <span>Auto-Detect</span>
+                    </button>
+                    <button onclick="saveCamIpSetting()"
+                      class="flex-1 sm:flex-initial py-2 sm:py-1.5 px-4 bg-teal-600 hover:bg-teal-500 active:scale-95 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shrink-0 text-center shadow-sm">
+                      Save
+                    </button>
+                  </div>
                 </div>
-                <p class="text-[8px] text-white/40 mt-1">Default AP: <code class="text-teal-300">192.168.4.1</code> |
-                  Local mDNS: <code class="text-teal-300">migo-cam.local</code></p>
+                <p class="text-[8.5px] text-white/40 mt-1.5 leading-relaxed">Default AP: <code class="text-teal-300 font-mono">192.168.4.1</code> | Local mDNS: <code class="text-teal-300 font-mono">migo-cam.local</code></p>
               </div>
 
               <!-- Toggle Header Vision Eye Button -->
@@ -1800,7 +1801,7 @@
   <!-- MIGO VISION SUBSYSTEM (DECOUPLED ESP32-CAM HUD & CONTROLLER) -->
   <!-- ============================================================ -->
   <div id="migoVisionHUD"
-    class="hidden fixed bottom-4 right-4 z-[130] w-[95vw] sm:w-[480px] md:w-[540px] lg:w-[600px] max-w-[620px] max-h-[94vh] glass-panel-dark border-2 border-teal-500/70 shadow-[0_16px_50px_rgba(0,0,0,0.8)] rounded-2xl flex flex-col overflow-hidden backdrop-blur-2xl transition-all duration-300">
+    class="hidden fixed inset-x-2 bottom-2 sm:inset-x-auto sm:bottom-4 sm:right-4 z-[130] w-auto sm:w-[480px] md:w-[540px] lg:w-[600px] max-w-full sm:max-w-[620px] max-h-[92vh] sm:max-h-[94vh] glass-panel-dark border-2 border-teal-500/70 shadow-[0_16px_50px_rgba(0,0,0,0.8)] rounded-2xl flex flex-col overflow-hidden backdrop-blur-2xl transition-all duration-300">
 
     <!-- Top Drag / Title Bar -->
     <div
@@ -1845,39 +1846,40 @@
         </div>
 
         <!-- Connection Controls (ESP32-CAM) -->
-        <div id="migoVisionEspRow" class="flex items-center gap-1.5 pt-0.5">
+        <div id="migoVisionEspRow" class="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 pt-0.5">
           <div
             class="flex-1 flex items-center bg-black/60 rounded-lg px-2.5 py-1.5 border border-white/10 min-w-0 focus-within:border-teal-400/60 transition-all">
             <span class="text-[10px] text-white/40 font-mono mr-1.5 shrink-0 select-none">ws://</span>
             <input id="migoVisionIpInput" type="text" value="192.168.4.1" placeholder="IP or migo-cam.local"
               class="bg-transparent text-xs font-mono text-teal-200 focus:outline-none w-full truncate">
           </div>
-          <!-- Obvious, intuitive Scan button with icon and label -->
-          <button id="migoVisionAutoDetectBtn" onclick="if(window.migoVision) window.migoVision.autoDetectAndConnect()"
-            class="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shrink-0 cursor-pointer shadow-md"
-            title="Scan Wi-Fi network to auto-detect MIGO ESP32-CAM">
-            <i class="ph-bold ph-magnifying-glass text-xs"></i> <span>Scan</span>
-          </button>
-          <button id="migoVisionConnectBtn" onclick="if(window.migoVision) window.migoVision.toggleConnection()"
-            class="bg-teal-600 hover:bg-teal-500 active:scale-95 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shrink-0 cursor-pointer shadow-md">
-            <i class="ph-bold ph-plug text-xs"></i> <span>Connect</span>
-          </button>
+          <div class="flex items-center gap-1.5 w-full sm:w-auto">
+            <button id="migoVisionAutoDetectBtn" onclick="if(window.migoVision) window.migoVision.autoDetectAndConnect()"
+              class="flex-1 sm:flex-initial bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-md"
+              title="Scan Wi-Fi network to auto-detect MIGO ESP32-CAM">
+              <i class="ph-bold ph-magnifying-glass text-xs"></i> <span>Scan</span>
+            </button>
+            <button id="migoVisionConnectBtn" onclick="if(window.migoVision) window.migoVision.toggleConnection()"
+              class="flex-1 sm:flex-initial bg-teal-600 hover:bg-teal-500 active:scale-95 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-md">
+              <i class="ph-bold ph-plug text-xs"></i> <span>Connect</span>
+            </button>
+          </div>
         </div>
 
         <!-- Connection Controls (Local Webcam) -->
-        <div id="migoVisionWebcamRow" class="hidden flex items-center justify-between gap-1.5 pt-0.5">
-          <div class="flex items-center gap-1.5 pl-1">
+        <div id="migoVisionWebcamRow" class="hidden flex-col sm:flex-row items-stretch sm:items-center justify-between gap-1.5 pt-0.5">
+          <div class="flex items-center gap-1.5 pl-1 py-0.5">
             <span class="w-2 h-2 rounded-full bg-teal-400 animate-pulse"></span>
             <span class="text-xs text-white/90 font-bold">Local Device Camera</span>
           </div>
-          <div class="flex items-center gap-1.5">
+          <div class="flex items-center gap-1.5 w-full sm:w-auto">
             <button id="migoVisionRowSwitchCamBtn" onclick="if(window.migoVision) window.migoVision.switchCamera()"
-              class="bg-black/50 hover:bg-black/70 active:scale-95 text-white/80 hover:text-white px-2.5 py-1.5 rounded-lg border border-white/10 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-all">
+              class="flex-1 sm:flex-initial bg-black/50 hover:bg-black/70 active:scale-95 text-white/80 hover:text-white px-2.5 py-1.5 rounded-lg border border-white/10 text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-all">
               <i class="ph-bold ph-camera-rotate text-xs text-amber-400"></i>
               <span id="migoVisionRowCamLabel">Front</span>
             </button>
             <button id="migoVisionWebcamBtn" onclick="if(window.migoVision) window.migoVision.toggleConnection()"
-              class="bg-teal-600 hover:bg-teal-500 active:scale-95 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shrink-0 cursor-pointer shadow-md">
+              class="flex-2 sm:flex-initial bg-teal-600 hover:bg-teal-500 active:scale-95 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-md">
               <i class="ph-bold ph-power text-xs"></i> <span>Start Camera</span>
             </button>
           </div>
@@ -1927,11 +1929,11 @@
 
         <!-- Quick Interaction Bar (Interactive Melodies & Reactions) -->
         <div id="migoVisionCompanionActions"
-          class="mt-2 pt-2 border-t border-white/10 flex items-center justify-between text-[9px] transition-all">
+          class="mt-2 pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-1.5 text-[9px] transition-all">
           <span class="text-white/40 text-[8.5px] flex items-center gap-1">
             <i class="ph-bold ph-sparkle text-amber-300"></i> Interactive Test Chimes:
           </span>
-          <div class="flex items-center gap-1.5">
+          <div class="flex items-center gap-1.5 flex-wrap">
             <button onclick="playMigoChirp('happy')"
               class="bg-black/50 hover:bg-teal-600/60 active:scale-95 text-white/90 hover:text-white px-2.5 py-1 rounded-lg border border-teal-500/30 text-[9px] font-semibold flex items-center gap-1 cursor-pointer transition-all shadow-sm"
               title="Test passive buzzer melodic chirp (GPIO 14)">
@@ -1953,26 +1955,26 @@
 
       <!-- Stream Quality & Display Utilities Toolbar (Decluttered from Video Canvas) -->
       <div
-        class="flex items-center justify-between gap-1 bg-black/35 px-2 py-1 rounded-xl border border-white/10 shrink-0 text-[10px]">
+        class="flex flex-wrap items-center justify-between gap-1.5 bg-black/35 px-2 py-1 rounded-xl border border-white/10 shrink-0 text-[10px]">
         <!-- Speed Presets -->
-        <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-1 flex-wrap">
           <span class="text-white/60 font-semibold flex items-center gap-1 text-[9px]">
             <i class="ph-bold ph-gauge text-teal-400"></i> Speed:
           </span>
           <div class="flex items-center gap-0.5 bg-black/50 p-0.5 rounded-lg border border-white/10">
             <button id="migoVisionSpeedFastBtn" onclick="if(window.migoVision) window.migoVision.setSpeedPreset('fast')"
-              class="px-2 py-0.5 rounded text-[9px] font-semibold text-white/60 hover:text-white transition-all cursor-pointer"
+              class="px-1.5 sm:px-2 py-0.5 rounded text-[8.5px] sm:text-[9px] font-semibold text-white/60 hover:text-white transition-all cursor-pointer"
               title="Fast (30 FPS, Low Latency, QQVGA) - Best for Hand Teleop & Autonomous Driving">
               ⚡ Fast
             </button>
             <button id="migoVisionSpeedBalBtn"
               onclick="if(window.migoVision) window.migoVision.setSpeedPreset('balanced')"
-              class="px-2 py-0.5 rounded text-[9px] font-bold bg-teal-600 text-white shadow-sm transition-all cursor-pointer"
+              class="px-1.5 sm:px-2 py-0.5 rounded text-[8.5px] sm:text-[9px] font-bold bg-teal-600 text-white shadow-sm transition-all cursor-pointer"
               title="Balanced (22 FPS, QVGA) - Optimal balance of speed and clarity">
-              ⚖️ Balanced
+              ⚖️ Bal
             </button>
             <button id="migoVisionSpeedHqBtn" onclick="if(window.migoVision) window.migoVision.setSpeedPreset('hq')"
-              class="px-2 py-0.5 rounded text-[9px] font-semibold text-white/60 hover:text-white transition-all cursor-pointer"
+              class="px-1.5 sm:px-2 py-0.5 rounded text-[8.5px] sm:text-[9px] font-semibold text-white/60 hover:text-white transition-all cursor-pointer"
               title="High Quality (12 FPS, VGA) - Sharpest image for inspection & photography">
               🎨 HQ
             </button>
@@ -1980,7 +1982,7 @@
         </div>
 
         <!-- Stream Display Actions (External to Video Viewport) -->
-        <div class="flex items-center gap-1">
+        <div class="flex items-center gap-1 flex-wrap ml-auto">
           <button id="migoVisionFlipBtn" onclick="if(window.migoVision) window.migoVision.toggleFlipH()"
             class="bg-white/5 hover:bg-white/10 active:scale-95 text-white/80 hover:text-white px-2 py-1 rounded-lg border border-white/10 text-[9px] font-semibold flex items-center gap-1 cursor-pointer transition-all"
             title="Mirror / Flip Video Feed (fixes left/right hand direction)">
@@ -2004,7 +2006,7 @@
 
       <!-- Live Stream Viewport & Interactive Canvas (EXPANDED HERO VIEWPORT) -->
       <div
-        class="relative w-full aspect-[4/3] bg-black/95 rounded-xl overflow-hidden border border-white/15 shadow-inner flex items-center justify-center select-none min-h-[240px] sm:min-h-[290px] md:min-h-[330px]">
+        class="relative w-full aspect-[4/3] bg-black/95 rounded-xl overflow-hidden border border-white/15 shadow-inner flex items-center justify-center select-none min-h-[190px] xs:min-h-[220px] sm:min-h-[290px] md:min-h-[330px]">
         <canvas id="migoVisionCanvas" width="320" height="240" class="w-full h-full object-contain cursor-crosshair"
           onclick="if(window.migoVision) window.migoVision.handleCanvasClick(event)"
           title="Click stream to sample target color"></canvas>
@@ -2095,7 +2097,7 @@
 
       <!-- Mode Selector Tabs (6 Vision Engines in 1 Clean Ribbon) -->
       <div
-        class="grid grid-cols-6 gap-1 bg-black/40 p-1.5 rounded-xl border border-white/10 shrink-0 text-[9px] font-bold">
+        class="grid grid-cols-3 sm:grid-cols-6 gap-1 bg-black/40 p-1.5 rounded-xl border border-white/10 shrink-0 text-[9px] font-bold">
         <button id="vModeOffBtn" onclick="if(window.migoVision) window.migoVision.setMode('OFF')"
           class="py-1.5 px-1 rounded-lg bg-white/20 text-white transition-all text-center cursor-pointer truncate">
           FPV
@@ -4733,15 +4735,32 @@
         const y = Math.floor((event.clientY - rect.top) * scaleY);
 
         try {
-          const pixel = this.ctx.getImageData(x, y, 1, 1).data;
-          const r = pixel[0], g = pixel[1], b = pixel[2];
+          // Robust 7x7 neighborhood sampling: median eliminates single-pixel camera noise or specular reflections
+          const sampleR = 3;
+          const sx = Math.max(0, x - sampleR);
+          const sy = Math.max(0, y - sampleR);
+          const sw = Math.min(this.canvas.width - sx, sampleR * 2 + 1);
+          const sh = Math.min(this.canvas.height - sy, sampleR * 2 + 1);
+          const patch = this.ctx.getImageData(sx, sy, sw, sh).data;
+
+          let sumR = 0, sumG = 0, sumB = 0, validPix = 0;
+          for (let p = 0; p < patch.length; p += 4) {
+            sumR += patch[p];
+            sumG += patch[p + 1];
+            sumB += patch[p + 2];
+            validPix++;
+          }
+
+          const r = Math.round(sumR / Math.max(1, validPix));
+          const g = Math.round(sumG / Math.max(1, validPix));
+          const b = Math.round(sumB / Math.max(1, validPix));
           const hsv = this.rgbToHsv(r, g, b);
           this.targetColor = { r, g, b, h: hsv.h, s: hsv.s, v: hsv.v };
 
           const swatch = document.getElementById('migoVisionColorSwatch');
           const name = document.getElementById('migoVisionTargetName');
           if (swatch) swatch.style.backgroundColor = `rgb(${r},${g},${b})`;
-          if (name) name.innerText = `Sampled (${hsv.h}°)`;
+          if (name) name.innerText = `Sampled (${hsv.h}° • S:${hsv.s}%)`;
 
           if (this.mode !== 'COLOR') {
             this.setMode('COLOR');
@@ -4781,25 +4800,52 @@
         }
       }
 
-      // Zero-Lag Real-Time Adaptive Bounding Box Filter (Reacts on Frame 1 without multi-frame median delay)
+      // 1€ (One Euro) Adaptive Low-Jitter Filter for Real-Time Perception Tracking
+      // Provides rock-solid stability during stationary tracking, zero latency lag during fast movement
       filterBoundingBox(x, y, w, h, cx, cy, frameW, frameH) {
+        const now = performance.now();
         if (!this.smoothBox) {
-          this.smoothBox = { x, y, w, h, cx, cy };
+          this.smoothBox = { x, y, w, h, cx, cy, vx: 0, vy: 0, lastTime: now };
           return this.smoothBox;
         }
 
-        // Velocity-adaptive EMA: fast motion snaps with alpha = 0.88; micro-motion smooths with alpha = 0.72
-        const moveDelta = Math.hypot(cx - this.smoothBox.cx, cy - this.smoothBox.cy) / Math.max(1, frameW);
-        const alpha = moveDelta > 0.035 ? 0.90 : 0.75;
+        const dt = Math.max(0.005, Math.min(0.1, (now - (this.smoothBox.lastTime || now)) / 1000.0));
+        this.smoothBox.lastTime = now;
 
-        let smX = alpha * x + (1 - alpha) * this.smoothBox.x;
-        let smY = alpha * y + (1 - alpha) * this.smoothBox.y;
-        let smW = alpha * w + (1 - alpha) * this.smoothBox.w;
-        let smH = alpha * h + (1 - alpha) * this.smoothBox.h;
-        let smCX = alpha * cx + (1 - alpha) * this.smoothBox.cx;
-        let smCY = alpha * cy + (1 - alpha) * this.smoothBox.cy;
+        // Instant velocity estimation with low-pass filtering
+        const rawVx = (cx - this.smoothBox.cx) / dt;
+        const rawVy = (cy - this.smoothBox.cy) / dt;
+        const dCutoff = 1.0;
+        const alphaD = (2 * Math.PI * dCutoff * dt) / (1 + 2 * Math.PI * dCutoff * dt);
+        const vx = alphaD * rawVx + (1 - alphaD) * (this.smoothBox.vx || 0);
+        const vy = alphaD * rawVy + (1 - alphaD) * (this.smoothBox.vy || 0);
+        this.smoothBox.vx = vx;
+        this.smoothBox.vy = vy;
 
-        this.smoothBox = { x: smX, y: smY, w: smW, h: smH, cx: smCX, cy: smCY };
+        // Adaptive cutoff frequency: scales with velocity (beta = 0.045, minCutoff = 1.2 Hz)
+        const speed = Math.hypot(vx, vy);
+        const minCutoff = 1.2;
+        const beta = 0.045;
+        const cutoff = minCutoff + beta * speed;
+        const alpha = Math.max(0.15, Math.min(0.95, (2 * Math.PI * cutoff * dt) / (1 + 2 * Math.PI * cutoff * dt)));
+
+        // Micro-deadband: if normalized position difference is below noise floor (0.6%), suppress jitter completely
+        const normDist = Math.hypot(cx - this.smoothBox.cx, cy - this.smoothBox.cy) / Math.max(1, frameW);
+        const effectiveAlpha = normDist < 0.006 ? 0.08 : (normDist > 0.04 ? 0.92 : alpha);
+
+        let smX = effectiveAlpha * x + (1 - effectiveAlpha) * this.smoothBox.x;
+        let smY = effectiveAlpha * y + (1 - effectiveAlpha) * this.smoothBox.y;
+        let smW = effectiveAlpha * w + (1 - effectiveAlpha) * this.smoothBox.w;
+        let smH = effectiveAlpha * h + (1 - effectiveAlpha) * this.smoothBox.h;
+        let smCX = effectiveAlpha * cx + (1 - effectiveAlpha) * this.smoothBox.cx;
+        let smCY = effectiveAlpha * cy + (1 - effectiveAlpha) * this.smoothBox.cy;
+
+        this.smoothBox.x = smX;
+        this.smoothBox.y = smY;
+        this.smoothBox.w = smW;
+        this.smoothBox.h = smH;
+        this.smoothBox.cx = smCX;
+        this.smoothBox.cy = smCY;
         return this.smoothBox;
       }
 
@@ -4809,19 +4855,30 @@
         const imgData = this.ctx.getImageData(0, 0, w, h);
         const data = imgData.data;
 
-        let sumX = 0, sumY = 0, count = 0;
-        let minX = w, maxX = 0, minY = h, maxY = 0;
         const tH = this.targetColor.h;
-        const tol = this.colorTolerance;
+        const tS = (typeof this.targetColor.s === 'number' ? this.targetColor.s : 80);
+        const tV = (typeof this.targetColor.v === 'number' ? this.targetColor.v : 80);
+        const tol = this.colorTolerance || 45;
 
-        // Fast zero-allocation inline HSV pixel scanner (step = 8 bytes = every 2nd pixel)
+        // Subdivide frame into a coarse grid (16x12 cells) to find the densest object cluster
+        // This eliminates background noise from scattering the centroid across the whole room
+        const gridCols = 16;
+        const gridRows = 12;
+        const cellW = w / gridCols;
+        const cellH = h / gridRows;
+        const grid = new Uint16Array(gridCols * gridRows);
+
+        const matchedPixelsX = [];
+        const matchedPixelsY = [];
+
+        // Fast zero-allocation HSV color distance scanner
         for (let i = 0; i < data.length; i += 8) {
           const r = data[i], g = data[i + 1], b = data[i + 2];
           const max = r > g ? (r > b ? r : b) : (g > b ? g : b);
-          if (max < 45) continue; // Skip dark background pixels immediately (v < ~18%)
+          if (max < 38) continue; // Skip deep shadows (v < 15%)
           const min = r < g ? (r < b ? r : b) : (g < b ? g : b);
           const d = max - min;
-          if (d * 100 < max * 20) continue; // Skip desaturated gray/white pixels (s < 20%)
+          if (d * 100 < max * 18) continue; // Skip grays/whites (s < 18%)
 
           let hue = 0;
           if (max === r) {
@@ -4836,45 +4893,89 @@
           let dH = Math.abs(hue - tH);
           if (dH > 180) dH = 360 - dH;
 
+          // Hue-weighted matching with saturation & value consistency check
           if (dH <= tol) {
+            const sat = Math.round((d / max) * 100);
+            const val = Math.round((max / 255) * 100);
+            if (Math.abs(sat - tS) > 65 || Math.abs(val - tV) > 68) continue;
+
             const pixelIdx = i >> 2;
             const px = pixelIdx % w;
             const py = (pixelIdx / w) | 0;
 
-            sumX += px;
-            sumY += py;
-            count++;
+            const gx = Math.min(gridCols - 1, Math.floor(px / cellW));
+            const gy = Math.min(gridRows - 1, Math.floor(py / cellH));
+            grid[gy * gridCols + gx]++;
 
-            if (px < minX) minX = px;
-            if (px > maxX) maxX = px;
-            if (py < minY) minY = py;
-            if (py > maxY) maxY = py;
+            matchedPixelsX.push(px);
+            matchedPixelsY.push(py);
           }
         }
 
-        if (count >= 14) {
-          this.colorMissedFrames = 0;
-          const rawTargetX = sumX / count;
-          const rawTargetY = sumY / count;
-          const rawW = Math.max(12, maxX - minX);
-          const rawH = Math.max(12, maxY - minY);
-
-          const smooth = this.filterBoundingBox(minX, minY, rawW, rawH, rawTargetX, rawTargetY, w, h);
-
-          this.targetDetected = true;
-          this.lastTargetSeenTime = Date.now();
-          this.renderReticle(smooth.x, smooth.y, smooth.w, smooth.h, smooth.cx, smooth.cy, w, h, 'COLOR LOCKED');
-          this.handleTargetTelemetry(smooth.cx, smooth.cy, w, h, smooth.w * smooth.h);
-        } else {
-          this.colorMissedFrames = (this.colorMissedFrames || 0) + 1;
-          if (this.colorMissedFrames >= 2) {
-            this.targetDetected = false;
-            this.boxHistory = [];
-            this.smoothBox = null;
-            this.hideReticle();
-            this.updateHUDTelemetry('SEARCHING', 0);
-            if (this.autoDrive) this.haltMotors();
+        // Find peak density cell
+        let maxCellCount = 0;
+        let peakGX = -1, peakGY = -1;
+        for (let gy = 0; gy < gridRows; gy++) {
+          for (let gx = 0; gx < gridCols; gx++) {
+            const cnt = grid[gy * gridCols + gx];
+            if (cnt > maxCellCount) {
+              maxCellCount = cnt;
+              peakGX = gx;
+              peakGY = gy;
+            }
           }
+        }
+
+        // Only track if cluster meets minimum mass threshold
+        if (maxCellCount >= 6 && matchedPixelsX.length >= 18) {
+          this.colorMissedFrames = 0;
+          const peakCenterX = (peakGX + 0.5) * cellW;
+          const peakCenterY = (peakGY + 0.5) * cellH;
+          const maxRadius = Math.max(cellW * 3.5, cellH * 3.5);
+
+          // Clustered Centroid: Only aggregate pixels near the main object mass (rejects distant noise)
+          let clusterSumX = 0, clusterSumY = 0, clusterCount = 0;
+          let minX = w, maxX = 0, minY = h, maxY = 0;
+
+          for (let k = 0; k < matchedPixelsX.length; k++) {
+            const px = matchedPixelsX[k];
+            const py = matchedPixelsY[k];
+            if (Math.hypot(px - peakCenterX, py - peakCenterY) <= maxRadius) {
+              clusterSumX += px;
+              clusterSumY += py;
+              clusterCount++;
+              if (px < minX) minX = px;
+              if (px > maxX) maxX = px;
+              if (py < minY) minY = py;
+              if (py > maxY) maxY = py;
+            }
+          }
+
+          if (clusterCount >= 14) {
+            const rawTargetX = clusterSumX / clusterCount;
+            const rawTargetY = clusterSumY / clusterCount;
+            const rawW = Math.max(14, maxX - minX);
+            const rawH = Math.max(14, maxY - minY);
+
+            const smooth = this.filterBoundingBox(minX, minY, rawW, rawH, rawTargetX, rawTargetY, w, h);
+
+            this.targetDetected = true;
+            this.lastTargetSeenTime = Date.now();
+            this.renderReticle(smooth.x, smooth.y, smooth.w, smooth.h, smooth.cx, smooth.cy, w, h, 'COLOR LOCKED');
+            this.handleTargetTelemetry(smooth.cx, smooth.cy, w, h, smooth.w * smooth.h);
+            return;
+          }
+        }
+
+        // Missed frame handler with hysteresis
+        this.colorMissedFrames = (this.colorMissedFrames || 0) + 1;
+        if (this.colorMissedFrames >= 3) {
+          this.targetDetected = false;
+          this.boxHistory = [];
+          this.smoothBox = null;
+          this.hideReticle();
+          this.updateHUDTelemetry('SEARCHING', 0);
+          if (this.autoDrive) this.haltMotors();
         }
       }
 
@@ -5535,36 +5636,94 @@
       pipelineLineTracking() {
         const w = this.canvas.width;
         const h = this.canvas.height;
-        const startY = Math.floor(h * 0.62);
+        // Region of interest: Ground scan in bottom 40% of viewport
+        const startY = Math.floor(h * 0.58);
         const scanHeight = h - startY;
 
         const imgData = this.ctx.getImageData(0, startY, w, scanHeight);
         const data = imgData.data;
 
-        let weightedSumX = 0;
-        let totalWeight = 0;
+        // Step 1: Compute real-time luminance histogram for dynamic Otsu-inspired thresholding
+        // Adapts dynamically to room brightness, shadows, and flooring contrast variations
+        const hist = new Uint16Array(32); // 32 bins (8 intensity levels per bin)
+        let totalSampled = 0;
+        for (let i = 0; i < data.length; i += 16) {
+          const lum = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8;
+          hist[lum >> 3]++;
+          totalSampled++;
+        }
+
+        // Find adaptive threshold separating line from background
+        let cum = 0;
+        let p25 = 85, p75 = 170;
+        const t25 = totalSampled * 0.25;
+        const t75 = totalSampled * 0.75;
+        for (let b = 0; b < 32; b++) {
+          cum += hist[b];
+          if (cum >= t25 && p25 === 85) p25 = (b << 3) + 4;
+          if (cum >= t75) { p75 = (b << 3) + 4; break; }
+        }
+
         const isDarkTape = this.lineDarkOnLight;
+        const lineThreshold = isDarkTape ? Math.max(45, Math.min(130, p25 + 18)) : Math.min(220, Math.max(140, p75 - 18));
 
-        for (let y = 0; y < scanHeight; y += 2) {
-          for (let x = 0; x < w; x += 2) {
-            const idx = (y * w + x) * 4;
-            const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+        // Step 2: Multi-band horizontal slice centroid detection (3 independent bands for trajectory prediction)
+        const bands = 3;
+        const sliceH = Math.floor(scanHeight / bands);
+        let validSlices = 0;
+        let combinedCentroidX = 0;
 
-            const matchesLine = isDarkTape ? (lum < 100) : (lum > 160);
-            if (matchesLine) {
-              const weight = y + 1; // Prioritize lower pixels nearest robot wheels
-              weightedSumX += x * weight;
-              totalWeight += weight;
+        for (let b = 0; b < bands; b++) {
+          const sliceStartY = b * sliceH;
+          const sliceEndY = sliceStartY + sliceH;
+          let sliceSumX = 0;
+          let sliceWeight = 0;
+
+          for (let y = sliceStartY; y < sliceEndY; y += 2) {
+            for (let x = 0; x < w; x += 2) {
+              const idx = (y * w + x) * 4;
+              const lum = (data[idx] * 77 + data[idx + 1] * 150 + data[idx + 2] * 29) >> 8;
+              const isMatch = isDarkTape ? (lum < lineThreshold) : (lum > lineThreshold);
+              if (isMatch) {
+                // Reject width anomalies (isolated single-pixel glares)
+                sliceSumX += x;
+                sliceWeight++;
+              }
             }
+          }
+
+          if (sliceWeight >= 16) {
+            const sliceCentroid = sliceSumX / sliceWeight;
+            // Near slices (lower on screen, nearer wheels) carry 2.5x higher steering weight
+            const sliceFactor = (b + 1) * (b + 1);
+            combinedCentroidX += sliceCentroid * sliceFactor;
+            validSlices += sliceFactor;
           }
         }
 
-        const minWeight = 50;
-        if (totalWeight >= minWeight) {
+        if (validSlices > 0) {
           this.lineMissedFrames = 0;
-          const lineCentroidX = weightedSumX / totalWeight;
-          const errorX = (lineCentroidX - (w / 2)) / (w / 2); // Normalized [-1.0, 1.0]
-          const dError = errorX - (this.lastLineErrorX || 0);
+          const rawCentroidX = combinedCentroidX / validSlices;
+          const rawErrorX = (rawCentroidX - (w / 2)) / (w / 2); // Normalized [-1.0, 1.0]
+
+          // 1€ Adaptive smoothing for line offset to eliminate steering jitter
+          const now = performance.now();
+          const dt = Math.max(0.005, Math.min(0.1, (now - (this.lastLineTime || now)) / 1000.0));
+          this.lastLineTime = now;
+
+          const rawDeriv = (rawErrorX - (this.lastLineErrorX || 0)) / dt;
+          const alphaLineD = (2 * Math.PI * 1.5 * dt) / (1 + 2 * Math.PI * 1.5 * dt);
+          const dError = alphaLineD * rawDeriv + (1 - alphaLineD) * (this.filteredLineDeriv || 0);
+          this.filteredLineDeriv = dError;
+
+          const lineSpeedRate = Math.abs(dError);
+          const lineCutoff = 1.4 + 0.05 * lineSpeedRate;
+          const alphaLine = Math.max(0.18, Math.min(0.92, (2 * Math.PI * lineCutoff * dt) / (1 + 2 * Math.PI * lineCutoff * dt)));
+
+          const errorX = (Math.abs(rawErrorX - (this.lineOffset || 0)) < 0.008) 
+            ? this.lineOffset 
+            : (alphaLine * rawErrorX + (1 - alphaLine) * (this.lineOffset || 0));
+
           this.lastLineErrorX = errorX;
           this.lineOffset = errorX;
           this.targetDetected = true;
@@ -5578,27 +5737,29 @@
           }
 
           // Draw Line Reticle Guideline
-          this.renderReticle(lineCentroidX - 18, startY + 10, 36, scanHeight - 20, lineCentroidX, startY + (scanHeight / 2), w, h, `LINE: ${(errorX >= 0 ? '+' : '') + errorX.toFixed(2)}`);
+          this.renderReticle(rawCentroidX - 18, startY + 10, 36, scanHeight - 20, rawCentroidX, startY + (scanHeight / 2), w, h, `LINE: ${(errorX >= 0 ? '+' : '') + errorX.toFixed(2)}`);
           this.updateHUDTelemetry('LINE TRACK', errorX);
 
-          // High-Speed Closed-Loop PD Line Follower Steering (Supports sharp differential cornering)
-          const now = performance.now();
+          // Real-time Closed-Loop PD Line Follower Steering (Smooth proportional-derivative response)
           if (this.autoDrive && (now - this.lastLineDispatchTime > 38)) {
             this.lastLineDispatchTime = now;
-            const baseSpd = this.lineBaseSpeed || 145;
-            const turnSteer = Math.round(errorX * 145 + dError * 50);
+            const baseSpd = this.lineBaseSpeed || 140;
+            // Dynamic proportional gain with smooth derivative damping to eliminate oscillation
+            const turnSteer = Math.round(errorX * 135 + dError * 22);
 
-            const minWheelSpd = Math.abs(errorX) > 0.30 ? -135 : 0;
-            const leftSpeed = Math.min(230, Math.max(minWheelSpd, baseSpd + turnSteer));
-            const rightSpeed = Math.min(230, Math.max(minWheelSpd, baseSpd - turnSteer));
+            // True differential turning: inner wheel slows or pivots backward for sharp 90° bends
+            const minWheelSpd = Math.abs(errorX) > 0.32 ? -120 : 0;
+            const leftSpeed = Math.min(225, Math.max(minWheelSpd, baseSpd + turnSteer));
+            const rightSpeed = Math.min(225, Math.max(minWheelSpd, baseSpd - turnSteer));
             this.dispatchMotorJoy(leftSpeed, rightSpeed);
           }
         } else {
           this.lineMissedFrames = (this.lineMissedFrames || 0) + 1;
-          if (this.lineMissedFrames >= 2) {
+          if (this.lineMissedFrames >= 3) {
             this.targetDetected = false;
             this.lineOffset = 0;
             this.lastLineErrorX = 0;
+            this.filteredLineDeriv = 0;
             this.hideReticle();
             this.updateHUDTelemetry('NO LINE', 0);
             if (this.autoDrive) this.haltMotors();

@@ -1,15 +1,15 @@
 /*
- * Version: 9.16.6
+ * Version: 9.17.0
  * Change Log:
+ * [Nov 04, 2026 10:00 PM] Feature: Enhanced Color Tracker and Optical Line Follower accuracy with Otsu dynamic thresholding, spatial cluster rejection, and 1€ adaptive de-jitter filtering across all AI perception models.
+ * [Nov 04, 2026 09:35 PM] Fix: Optimized mobile responsive layout for ESP32-CAM settings card and MIGO Vision HUD with flex-wrap button groups, touch targets, and overflow safety.
  * [Nov 04, 2026 04:08 PM] Fix: Resolved syntax errors in triggerSpeechLifelikeAnimation nested blocks and cleaned corrupted diff preview text in testAndSaveApiKey.
  * [Nov 04, 2026 04:00 PM] Fix: Removed incompatible boolean vision reporter blocks from Explorer mode toolbox to maintain clean, non-conditional beginner visual coding.
  * [Nov 04, 2026 03:45 PM] Fix: Disabled talking animations and speech motor/servo gestures in Explorer and Inventor modes so user code runs uninterrupted.
- * [Nov 04, 2026 03:35 PM] Fix: Accelerated MIGO Vision real-time responsiveness across Face, Gesture, Color, Object, and Line tracking with zero-lag filtering and BLE stream coalescing.
- * [Nov 04, 2026 03:20 PM] Fix: Eliminated linear wheel translation drift during speech; added guaranteed-recovery in-place yaw pivots to prevent falling off tables.
  */
 
 // MIGO Controller Service Worker v9.14.2
-const APP_CACHE_NAME = 'migo-controller-cache-v9.16.6';
+const APP_CACHE_NAME = 'migo-controller-cache-v9.17.0';
 const AI_MODEL_CACHE_NAME = 'migo-ai-models-persistent-v1';
 
 // Core local assets to cache on install
