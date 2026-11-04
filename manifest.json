@@ -1,7 +1,15 @@
 {
-  "name": "MIGO Robot Controller v7.5 (Super AIONA + Gamepad)",
-  "short_name": "MIGO v7.5",
-  "description": "Offline-capable web controller, Blockly programming workspace, and Gamepad input suite for MIGO & AIONA Robots.",
+  "_version": "9.16.6",
+  "_changeLog": [
+    "[Nov 04, 2026 04:08 PM] Fix: Resolved syntax errors in triggerSpeechLifelikeAnimation nested blocks and cleaned corrupted diff preview text in testAndSaveApiKey.",
+    "[Nov 04, 2026 04:00 PM] Fix: Removed incompatible boolean vision reporter blocks from Explorer mode toolbox to maintain clean, non-conditional beginner visual coding.",
+    "[Nov 04, 2026 03:45 PM] Fix: Disabled talking animations and speech motor/servo gestures in Explorer and Inventor modes so user code runs uninterrupted.",
+    "[Nov 04, 2026 03:35 PM] Fix: Accelerated MIGO Vision real-time responsiveness across Face, Gesture, Color, Object, and Line tracking with zero-lag filtering and BLE stream coalescing.",
+    "[Nov 04, 2026 03:20 PM] Fix: Eliminated linear wheel translation drift during speech; added guaranteed-recovery in-place yaw pivots to prevent falling off tables."
+  ],
+  "name": "MIGO Robot Controller v9.16.6 (Super AIONA + Vision)",
+  "short_name": "MIGO v9",
+  "description": "Offline-capable web controller, Blockly programming workspace, and decoupled optical vision tracking for MIGO & Super AIONA Robots.",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "any",
