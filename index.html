@@ -1,11 +1,11 @@
 <!--
-  MIGO Web Controller | Version: 9.17.0
+  MIGO Web Controller | Version: 9.18.3
   Change Log:
+  [Nov 06, 2026 01:25 PM] Feature: Implemented decoupled dual-loop vision control with Schmitt trigger hysteresis, 30Hz deterministic trajectory engine, and progressive breakaway ramping for smooth jitter-free robot tracking.
+  [Nov 06, 2026 04:30 AM] Fix: Restored active production Gemini 2.0/1.5 models to fix HTTP 404 errors, resolved simulation variable redeclaration diagnostics, and added motor slew-rate ramping, soft-start deadband, and 85ms BLE heartbeat for smooth jitter-free robot motion.
+  [Nov 06, 2026 03:25 AM] Fix: Resolved HTTP 404 Gemini API connectivity error by adding dynamic ListModels auto-discovery fallback and fixing multimodal image payload injection in Super AIONA stream handler.
+  [Nov 05, 2026 10:15 PM] Feature: Upgraded AI core with automatic multi-model background fallback and enabled photo upload with intelligent visual feedback in AIONA companion chat.
   [Nov 04, 2026 10:00 PM] Feature: Enhanced Color Tracker and Optical Line Follower accuracy with Otsu dynamic thresholding, spatial cluster rejection, and 1€ adaptive de-jitter filtering across all AI perception models.
-  [Nov 04, 2026 09:35 PM] Fix: Optimized mobile responsive layout for ESP32-CAM settings card and MIGO Vision HUD with flex-wrap button groups, touch targets, and overflow safety.
-  [Nov 04, 2026 04:08 PM] Fix: Resolved syntax errors in triggerSpeechLifelikeAnimation nested blocks and cleaned corrupted diff preview text in testAndSaveApiKey.
-  [Nov 04, 2026 04:00 PM] Fix: Removed incompatible boolean vision reporter blocks from Explorer mode toolbox to maintain clean, non-conditional beginner visual coding.
-  [Nov 04, 2026 03:45 PM] Fix: Disabled talking animations and speech motor/servo gestures in Explorer and Inventor modes so user code runs uninterrupted.
 -->
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v9.17.0 (Super AIONA + Vision)</title>
+  <title>MIGO Robot Controller v9.18.3 (Super AIONA + Vision)</title>
 
   <!-- PWA Manifest & Theme -->
   <link rel="manifest" href="./manifest.json">
@@ -3068,70 +3068,94 @@
         </div>
 
         <!-- Chat Input Bar -->
-        <div class="shrink-0 flex flex-col md:flex-row items-end gap-2 border-t border-white/10 pt-2 bg-transparent">
+        <div class="shrink-0 flex flex-col gap-2 border-t border-white/10 pt-2 bg-transparent relative">
 
-          <!-- Toggles Row -->
-          <div
-            class="flex items-center justify-center md:justify-start gap-2 w-full md:w-auto bg-black/20 md:bg-transparent p-1.5 md:p-0 rounded-2xl border border-white/5 md:border-none mb-1 md:mb-0 shrink-0">
-            <!-- Wake Word Listener Toggle -->
-            <button id="aionaWakeWordToggle" onclick="aionaToggleWakeWord()"
-              class="w-8 h-8 rounded-full bg-teal-500/10 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 transition-all flex items-center justify-center shrink-0 cursor-pointer relative"
-              title="Toggle Continuous Wake-Word Detection">
-              <svg class="w-4 h-4 pointer-events-none transition-transform" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <path
-                  d="M 8.5 7.5 C 8.5 4.2 11 2.2 14.5 2.2 C 19 2.2 21.5 6.5 21.5 12 C 21.5 17 18 21.8 13.5 21.8 C 10.5 21.8 8.5 19.5 8.5 17.2" />
-                <path
-                  d="M 12.5 6.8 C 14.8 6.8 16.8 8.2 16.8 10.5 C 16.8 12.8 14 13.6 12.6 15 C 11.2 16.4 11.2 17.8 11.8 18.5" />
-                <path d="M 5.8 10.5 A 3.2 3.2 0 0 0 5.8 14.5" />
-                <path d="M 3.8 8.5 A 5.8 5.8 0 0 0 3.8 16.5" />
-                <path d="M 1.8 6.5 A 8.5 8.5 0 0 0 1.8 18.5" />
-              </svg>
-              <span id="aionaWakeWordBadge"
-                class="absolute -top-1 -right-1 px-1 py-0.5 rounded bg-red-500 border border-slate-900 text-[6px] font-bold text-white leading-none">OFF</span>
-            </button>
-
-            <!-- Continuous Conversation Toggle -->
-            <button id="aionaContinuousToggle" onclick="aionaToggleContinuous()"
-              class="w-8 h-8 rounded-full bg-teal-500/10 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 transition-all flex items-center justify-center shrink-0 cursor-pointer relative"
-              title="Toggle Continuous Conversation Mode (Auto-Listen after responding)">
-              <i class="ph-bold ph-chats-circle text-base"></i>
-              <span id="aionaContinuousBadge"
-                class="absolute -top-1 -right-1 px-1 py-0.5 rounded bg-red-500 border border-slate-900 text-[6px] font-bold text-white leading-none">OFF</span>
-            </button>
-
-            <!-- Conversation Mode Toggle -->
-            <button id="aionaConvModeBtn" onclick="toggleConvMode()"
-              class="w-8 h-8 rounded-full bg-teal-500/10 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 transition-all flex items-center justify-center shrink-0 cursor-pointer relative"
-              title="Toggle Multi-MIGO Conversation Mode — let your robots talk to each other!">
-              <i class="ph-bold ph-users-three text-base"></i>
-              <span id="aionaConvModeBadge"
-                class="absolute -top-1 -right-1 px-1 py-0.5 rounded bg-red-500 border border-slate-900 text-[6px] font-bold text-white leading-none">OFF</span>
-            </button>
+          <!-- Image Attachment Preview Bar -->
+          <div id="aionaImagePreviewContainer" class="hidden w-full animate-fade-in">
+            <div class="flex items-center gap-2 p-1.5 bg-slate-900/90 border border-teal-500/40 rounded-xl backdrop-blur-md max-w-fit shadow-md">
+              <img id="aionaImagePreviewThumbnail" class="w-10 h-10 object-cover rounded-lg border border-teal-500/30 shrink-0" src="" alt="Attached preview">
+              <div class="flex flex-col min-w-0 pr-1">
+                <span id="aionaImagePreviewName" class="text-[10px] font-bold text-teal-200 truncate max-w-[140px] sm:max-w-[200px]">photo.jpg</span>
+                <span id="aionaImagePreviewSize" class="text-[8px] text-white/50">Attached photo</span>
+              </div>
+              <button type="button" onclick="clearAionaPendingImage()" class="w-6 h-6 rounded-full bg-white/10 hover:bg-red-500/30 hover:text-red-300 flex items-center justify-center text-white/70 transition-all text-xs cursor-pointer ml-1" title="Remove attached photo">
+                <i class="ph-bold ph-x"></i>
+              </button>
+            </div>
           </div>
 
-          <!-- Input Row -->
-          <div class="flex items-end gap-2 w-full md:flex-1">
-            <!-- Voice Mic Trigger -->
-            <button id="aionaMicBtn" onclick="aionaTriggerManualSpeech()"
-              class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-all flex items-center justify-center text-white shrink-0 mb-0.5 cursor-pointer"
-              title="Speak query manually">
-              <i class="ph-bold ph-microphone text-base"></i>
-            </button>
+          <div class="flex flex-col md:flex-row items-end gap-2 w-full">
+            <!-- Toggles Row -->
+            <div
+              class="flex items-center justify-center md:justify-start gap-2 w-full md:w-auto bg-black/20 md:bg-transparent p-1.5 md:p-0 rounded-2xl border border-white/5 md:border-none mb-1 md:mb-0 shrink-0">
+              <!-- Wake Word Listener Toggle -->
+              <button id="aionaWakeWordToggle" onclick="aionaToggleWakeWord()"
+                class="w-8 h-8 rounded-full bg-teal-500/10 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 transition-all flex items-center justify-center shrink-0 cursor-pointer relative"
+                title="Toggle Continuous Wake-Word Detection">
+                <svg class="w-4 h-4 pointer-events-none transition-transform" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path
+                    d="M 8.5 7.5 C 8.5 4.2 11 2.2 14.5 2.2 C 19 2.2 21.5 6.5 21.5 12 C 21.5 17 18 21.8 13.5 21.8 C 10.5 21.8 8.5 19.5 8.5 17.2" />
+                  <path
+                    d="M 12.5 6.8 C 14.8 6.8 16.8 8.2 16.8 10.5 C 16.8 12.8 14 13.6 12.6 15 C 11.2 16.4 11.2 17.8 11.8 18.5" />
+                  <path d="M 5.8 10.5 A 3.2 3.2 0 0 0 5.8 14.5" />
+                  <path d="M 3.8 8.5 A 5.8 5.8 0 0 0 3.8 16.5" />
+                  <path d="M 1.8 6.5 A 8.5 8.5 0 0 0 1.8 18.5" />
+                </svg>
+                <span id="aionaWakeWordBadge"
+                  class="absolute -top-1 -right-1 px-1 py-0.5 rounded bg-red-500 border border-slate-900 text-[6px] font-bold text-white leading-none">OFF</span>
+              </button>
 
-            <!-- Input Textarea -->
-            <textarea id="aionaInputText" placeholder="Wake Aiona or type your question..." rows="1"
-              onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); aionaSendMessage(); }"
-              oninput="adjustAionaInputHeight()"
-              class="flex-grow min-w-0 p-2 bg-black/40 border border-white/20 rounded-xl text-xs placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-teal-500 text-white resize-none overflow-y-hidden"
-              style="height: 34px; max-height: 120px; line-height: 1.25rem;"></textarea>
+              <!-- Continuous Conversation Toggle -->
+              <button id="aionaContinuousToggle" onclick="aionaToggleContinuous()"
+                class="w-8 h-8 rounded-full bg-teal-500/10 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 transition-all flex items-center justify-center shrink-0 cursor-pointer relative"
+                title="Toggle Continuous Conversation Mode (Auto-Listen after responding)">
+                <i class="ph-bold ph-chats-circle text-base"></i>
+                <span id="aionaContinuousBadge"
+                  class="absolute -top-1 -right-1 px-1 py-0.5 rounded bg-red-500 border border-slate-900 text-[6px] font-bold text-white leading-none">OFF</span>
+              </button>
 
-            <!-- Send Button -->
-            <button id="aionaSendBtn" onclick="aionaSendMessage()"
-              class="w-8 h-8 rounded-full bg-gradient-to-r from-teal-400 to-amber-400 text-black font-bold active:scale-90 transition-all flex items-center justify-center shrink-0 mb-0.5 cursor-pointer"
-              title="Send query">
-              <i class="ph-bold ph-paper-plane-tilt text-base"></i>
-            </button>
+              <!-- Conversation Mode Toggle -->
+              <button id="aionaConvModeBtn" onclick="toggleConvMode()"
+                class="w-8 h-8 rounded-full bg-teal-500/10 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 transition-all flex items-center justify-center shrink-0 cursor-pointer relative"
+                title="Toggle Multi-MIGO Conversation Mode — let your robots talk to each other!">
+                <i class="ph-bold ph-users-three text-base"></i>
+                <span id="aionaConvModeBadge"
+                  class="absolute -top-1 -right-1 px-1 py-0.5 rounded bg-red-500 border border-slate-900 text-[6px] font-bold text-white leading-none">OFF</span>
+              </button>
+            </div>
+
+            <!-- Input Row -->
+            <div class="flex items-end gap-2 w-full md:flex-1">
+              <!-- Voice Mic Trigger -->
+              <button id="aionaMicBtn" onclick="aionaTriggerManualSpeech()"
+                class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 active:scale-90 transition-all flex items-center justify-center text-white shrink-0 mb-0.5 cursor-pointer"
+                title="Speak query manually">
+                <i class="ph-bold ph-microphone text-base"></i>
+              </button>
+
+              <!-- Image Upload Trigger -->
+              <button id="aionaImageBtn" type="button" onclick="triggerAionaImageUpload()"
+                class="w-8 h-8 rounded-full bg-teal-500/10 hover:bg-teal-500/25 border border-teal-500/30 text-teal-300 active:scale-90 transition-all flex items-center justify-center shrink-0 mb-0.5 cursor-pointer shadow-sm"
+                title="Upload picture or photo for MIGO to inspect">
+                <i class="ph-bold ph-camera text-base"></i>
+              </button>
+              <input type="file" id="aionaImageFileInput" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" onchange="handleAionaImageSelected(event)">
+
+              <!-- Input Textarea -->
+              <textarea id="aionaInputText" placeholder="Wake Aiona or type your question..." rows="1"
+                onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); aionaSendMessage(); }"
+                oninput="adjustAionaInputHeight()"
+                class="flex-grow min-w-0 p-2 bg-black/40 border border-white/20 rounded-xl text-xs placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-teal-500 text-white resize-none overflow-y-hidden"
+                style="height: 34px; max-height: 120px; line-height: 1.25rem;"></textarea>
+
+              <!-- Send Button -->
+              <button id="aionaSendBtn" onclick="aionaSendMessage()"
+                class="w-8 h-8 rounded-full bg-gradient-to-r from-teal-400 to-amber-400 text-black font-bold active:scale-90 transition-all flex items-center justify-center shrink-0 mb-0.5 cursor-pointer"
+                title="Send query">
+                <i class="ph-bold ph-paper-plane-tilt text-base"></i>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -3148,7 +3172,119 @@
     let recognition;
     let isListening = false;
     let ttsEnabled = true;
-    let geminiModel = localStorage.getItem('migo_gemini_model') || 'gemini-2.5-flash';
+    // Gemini API Free Tier Models Fallback Chain (Fastest speed, highest RPM/RPD, robust intelligence & multimodal vision)
+    const GEMINI_DEFAULT_MODELS_CHAIN = [
+      'gemini-2.0-flash',
+      'gemini-2.0-flash-lite',
+      'gemini-2.0-flash-lite-preview-02-05',
+      'gemini-1.5-flash',
+      'gemini-1.5-flash-8b',
+      'gemini-1.5-pro'
+    ];
+
+    const _deadGeminiModels = new Set();
+    let _discoveredGeminiModels = null;
+
+    function isRetiredGeminiModel(modelName) {
+      if (!modelName || typeof modelName !== 'string') return true;
+      const m = modelName.toLowerCase();
+      // Only retire deprecated 1.0 generation or nonexistent experimental tags
+      return m === 'gemini-1.0-pro' || m === 'gemini-1.0' || m === 'gemini-pro' || m === 'gemini-pro-vision' || m.includes('1.0') || m.includes('gemini-2.5') || m.includes('gemini-3');
+    }
+
+    function parseGeminiErrorMsg(errJson, status) {
+      if (!errJson) return `HTTP ${status}`;
+      if (Array.isArray(errJson)) {
+        const firstErr = errJson[0]?.error?.message || errJson[0]?.message;
+        if (firstErr) return firstErr;
+      }
+      if (errJson.error?.message) return errJson.error.message;
+      if (typeof errJson.error === 'string') return errJson.error;
+      if (errJson.message) return errJson.message;
+      return `HTTP ${status}`;
+    }
+
+    async function discoverAvailableGeminiModels(apiKey) {
+      if (_discoveredGeminiModels && _discoveredGeminiModels.length > 0) {
+        return _discoveredGeminiModels.filter(m => !_deadGeminiModels.has(m));
+      }
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+        if (res.status !== 200) return [];
+        const data = await res.json();
+        if (!data || !Array.isArray(data.models)) return [];
+
+        const valid = data.models
+          .filter(m => {
+            const methods = m.supportedGenerationMethods || [];
+            if (!methods.includes('generateContent')) return false;
+            const id = (m.name || '').replace(/^models\//, '').toLowerCase();
+            if (isRetiredGeminiModel(id)) return false;
+            // Exclude non-chat/specialized models
+            if (['embedding', 'imagen', 'veo', 'aqa', 'tts', 'audio', 'whisper', 'robotics', 'computer-use', 'learnlm', 'bisheng'].some(ex => id.includes(ex))) {
+              return false;
+            }
+            return id.startsWith('gemini-');
+          })
+          .map(m => m.name.replace(/^models\//, ''));
+
+        // Sort to prioritize fast flash models (highest RPM/RPD & speed with vision)
+        valid.sort((a, b) => {
+          const score = (name) => {
+            const n = name.toLowerCase();
+            if (n === 'gemini-2.0-flash') return 100;
+            if (n.includes('2.0-flash-lite')) return 95;
+            if (n === 'gemini-2.0-flash-001') return 92;
+            if (n === 'gemini-1.5-flash') return 85;
+            if (n === 'gemini-1.5-flash-8b') return 80;
+            if (n.includes('flash') && !n.includes('exp')) return 75;
+            if (n.includes('flash')) return 70;
+            if (n.includes('pro')) return 60;
+            return 50;
+          };
+          return score(b) - score(a);
+        });
+
+        if (valid.length > 0) {
+          _discoveredGeminiModels = valid;
+        }
+        return valid.filter(m => !_deadGeminiModels.has(m));
+      } catch (e) {
+        console.warn('[Gemini Discovery] Could not list models:', e);
+        return [];
+      }
+    }
+
+    function getGeminiCandidateModels() {
+      let stored = localStorage.getItem('migo_gemini_model');
+      if (stored && (isRetiredGeminiModel(stored) || _deadGeminiModels.has(stored))) {
+        try { localStorage.removeItem('migo_gemini_model'); } catch (e) {}
+        stored = null;
+      }
+      let current = (typeof geminiModel !== 'undefined' && geminiModel) ? geminiModel : null;
+      if (current && (isRetiredGeminiModel(current) || _deadGeminiModels.has(current))) {
+        current = null;
+      }
+      const list = [];
+      if (stored && !_deadGeminiModels.has(stored)) list.push(stored);
+      if (current && !list.includes(current) && !_deadGeminiModels.has(current)) list.push(current);
+      if (_discoveredGeminiModels && _discoveredGeminiModels.length > 0) {
+        for (const dm of _discoveredGeminiModels) {
+          if (!list.includes(dm) && !_deadGeminiModels.has(dm)) list.push(dm);
+        }
+      }
+      for (const m of GEMINI_DEFAULT_MODELS_CHAIN) {
+        if (!list.includes(m) && !_deadGeminiModels.has(m)) list.push(m);
+      }
+      return list.length > 0 ? list : [...GEMINI_DEFAULT_MODELS_CHAIN];
+    }
+
+    let _initialStoredModel = localStorage.getItem('migo_gemini_model');
+    if (_initialStoredModel && isRetiredGeminiModel(_initialStoredModel)) {
+      try { localStorage.removeItem('migo_gemini_model'); } catch (e) {}
+      _initialStoredModel = null;
+    }
+    let geminiModel = _initialStoredModel || 'gemini-2.0-flash';
     let chatHistory = [];
     let activeSuggestions = [];
 
@@ -3361,6 +3497,19 @@
         this.lineMissedFrames = 0;
         this.lastGazeDx = null;
         this.lastGazeDy = null;
+
+        // Anti-Jitter Motor Ramping, Slew-Rate Limiting & Low-Pass Filtering
+        this.slewLeftPWM = 0;
+        this.slewRightPWM = 0;
+        this.lastSlewTime = performance.now();
+        this.filteredDerivX = 0;
+        this.filteredThrottle = 0;
+        this.isCenteringActive = false; // Schmitt trigger hysteresis flag
+        this.telemetryState = { errorX: 0, turnSignal: 0, throttle: 0 };
+        this.lastTargetTelemetryTime = 0;
+
+        // Dedicated 30 Hz (33ms) Deterministic Motion Control Engine (Decoupled from camera frame rate)
+        this.motionLoopTimer = setInterval(() => this.stepMotionControlLoop(), 33);
 
         // Bounding Box Smoothing Filter (Median + EMA + Deadband)
         this.boxHistory = [];
@@ -4773,6 +4922,9 @@
       toggleAutoDrive(checked) {
         this.autoDrive = checked;
         if (!checked) {
+          this.isCenteringActive = false;
+          this.slewLeftPWM = 0;
+          this.slewRightPWM = 0;
           this.haltMotors();
         }
       }
@@ -5799,87 +5951,169 @@
 
       handleTargetTelemetry(targetX, targetY, frameW, frameH, area) {
         const now = performance.now();
-        const dt = Math.max(0.01, (now - this.lastErrorTime) / 1000.0);
+        const dt = Math.max(0.01, Math.min(0.1, (now - this.lastErrorTime) / 1000.0));
 
         const errorX = (targetX - (frameW / 2)) / (frameW / 2);
-        const derivativeX = (errorX - this.lastErrorX) / dt;
-        const turnSignal = (this.Kp * errorX) + (this.Kd * derivativeX);
+
+        // Low-pass exponential moving average filter on derivative to suppress camera frame-jitter noise
+        const rawDerivX = (errorX - this.lastErrorX) / dt;
+        this.filteredDerivX = (this.filteredDerivX !== undefined && !isNaN(this.filteredDerivX))
+          ? (0.70 * this.filteredDerivX + 0.30 * rawDerivX)
+          : rawDerivX;
+        if (Math.abs(this.filteredDerivX) < 0.04) this.filteredDerivX = 0;
+
+        const turnSignal = (this.Kp * errorX) + (this.Kd * this.filteredDerivX);
 
         this.lastErrorX = errorX;
         this.lastErrorTime = now;
 
-        // Proximity & Distance Calculation (Sweet-Spot Following)
+        // Proximity & Distance Calculation (Sweet-Spot Following with soft transition)
         const frameArea = frameW * frameH;
         const areaRatio = area / frameArea;
 
-        let throttle = 0;
+        let targetThrottle = 0;
         let distanceState = 'IN RANGE';
 
         const ultraDist = (typeof migoLastDistanceCm === 'number' && migoLastDistanceCm > 0) ? migoLastDistanceCm : 999;
 
         if (areaRatio < 0.07 && ultraDist > 30) {
-          throttle = 150; // Target is far: drive forward
+          targetThrottle = 145; // Target is far: drive forward
           distanceState = 'APPROACHING';
         } else if (areaRatio > 0.24 || ultraDist < 20) {
-          throttle = -120; // Target is too close: gently back away
+          targetThrottle = -115; // Target is too close: gently back away
           distanceState = 'BACKING UP';
         } else {
-          throttle = 0; // Target in sweet spot: hold distance!
+          targetThrottle = 0; // Target in sweet spot: hold distance!
           distanceState = 'SWEET SPOT';
         }
 
+        // Smooth throttle transition to prevent abrupt forward/reverse jolts
+        this.filteredThrottle = this.filteredThrottle !== undefined
+          ? (this.filteredThrottle + (targetThrottle - this.filteredThrottle) * 0.25)
+          : targetThrottle;
+        const throttle = Math.abs(this.filteredThrottle) < 6 ? 0 : Math.round(this.filteredThrottle);
+
         this.updateHUDTelemetry(distanceState, errorX);
 
-        if (this.autoDrive) {
-          const deadband = 0.06; // Crisp 6% center zone for immediate real-time tracking
-          let leftSpeed = 0, rightSpeed = 0;
+        // Decoupled Perception Vector: updates target state for the deterministic 30 Hz motion control engine
+        this.telemetryState = { errorX, turnSignal, throttle };
+        this.lastTargetTelemetryTime = now;
+      }
 
-          if (Math.abs(errorX) <= deadband && throttle === 0) {
-            // Target centered and in sweet spot distance: hold still!
+      stepMotionControlLoop() {
+        if (!this.autoDrive || this.mode === 'OFF' || this.mode === 'LINE') {
+          return;
+        }
+
+        const now = performance.now();
+        const telemetryAge = now - (this.lastTargetTelemetryTime || 0);
+
+        // Target lost or stale (> 420ms without fresh vision detection): smoothly decelerate to stop
+        if (!this.targetDetected || telemetryAge > 420) {
+          this.isCenteringActive = false;
+          if (Math.abs(this.slewLeftPWM || 0) > 4 || Math.abs(this.slewRightPWM || 0) > 4) {
+            this.dispatchMotorJoy(0, 0);
+          } else if (!this.isMotorHalted) {
             this.haltMotors();
-            return;
-          } else if (Math.abs(errorX) <= deadband) {
-            // Centered: move straight forward or backward
-            leftSpeed = throttle;
-            rightSpeed = throttle;
-          } else if (throttle === 0) {
-            // In sweet-spot range: steer/rotate in place to keep facing target
-            const rotSpeed = Math.min(210, Math.max(115, Math.round(Math.abs(turnSignal) + 92)));
-            if (turnSignal > 0) {
-              leftSpeed = rotSpeed;   // Turn right to center target
-              rightSpeed = -rotSpeed;
-            } else {
-              leftSpeed = -rotSpeed;  // Turn left to center target
-              rightSpeed = rotSpeed;
-            }
-          } else {
-            // Moving while steering: smooth differential drive
-            const steerOffset = Math.min(95, Math.max(-95, Math.round(turnSignal * 0.72)));
-            leftSpeed = Math.min(235, Math.max(-235, throttle + steerOffset));
-            rightSpeed = Math.min(235, Math.max(-235, throttle - steerOffset));
           }
+          return;
+        }
 
-          // Fast 40ms (25 Hz) real-time BLE dispatch loop
-          if (now - this.lastBleDispatchTime > 40) {
-            this.lastBleDispatchTime = now;
-            this.dispatchMotorJoy(leftSpeed, rightSpeed);
+        // Active Target Tracking with Dual-Threshold Schmitt Trigger Hysteresis
+        const absErr = Math.abs(this.telemetryState.errorX);
+        const turnSignal = this.telemetryState.turnSignal;
+        const throttle = this.telemetryState.throttle;
+
+        const INNER_DEADBAND = 0.035; // 3.5% deadband: settling threshold where turning stops
+        const OUTER_DEADBAND = 0.075; // 7.5% trigger threshold: breaks deadband only on real drift
+
+        if (this.isCenteringActive) {
+          // Currently rotating: only stop when target is comfortably within inner deadband
+          if (absErr <= INNER_DEADBAND) {
+            this.isCenteringActive = false;
+          }
+        } else {
+          // Stationary in deadband: only begin rotating when target drifts past outer deadband
+          if (absErr >= OUTER_DEADBAND) {
+            this.isCenteringActive = true;
           }
         }
+
+        let targetL = 0, targetR = 0;
+
+        if (!this.isCenteringActive && throttle === 0) {
+          // Target centered and in sweet spot distance: smoothly settle
+          targetL = 0;
+          targetR = 0;
+        } else if (!this.isCenteringActive) {
+          // Centered: cruise straight forward or backward
+          targetL = throttle;
+          targetR = throttle;
+        } else if (throttle === 0) {
+          // In sweet spot range: rotate in place with progressive breakaway soft-start
+          const norm = Math.min(1.0, Math.max(0, (absErr - INNER_DEADBAND) / (0.16 - INNER_DEADBAND)));
+          const eased = norm * norm; // Quadratic ease-in: smooth progressive torque without jolting
+          const minBreakaway = 70;
+          const rotSpeed = Math.round(minBreakaway + (115 - minBreakaway) * eased + Math.abs(turnSignal * 0.40));
+
+          if (turnSignal > 0) {
+            targetL = rotSpeed;
+            targetR = -rotSpeed;
+          } else {
+            targetL = -rotSpeed;
+            targetR = rotSpeed;
+          }
+        } else {
+          // Cruising while steering: smooth differential drive
+          const steerOffset = Math.min(85, Math.max(-85, Math.round(turnSignal * 0.65)));
+          targetL = Math.min(220, Math.max(-220, throttle + steerOffset));
+          targetR = Math.min(220, Math.max(-220, throttle - steerOffset));
+        }
+
+        // Dispatch through motor slew limiter and BLE heartbeat
+        this.dispatchMotorJoy(targetL, targetR);
       }
 
       dispatchMotorJoy(l, r) {
         try {
-          const rl = Math.round(l);
-          const rr = Math.round(r);
+          const now = performance.now();
+          const targetL = Math.round(l);
+          const targetR = Math.round(r);
+
+          if (targetL === 0 && targetR === 0 && Math.abs(this.slewLeftPWM || 0) < 5 && Math.abs(this.slewRightPWM || 0) < 5) {
+            this.slewLeftPWM = 0;
+            this.slewRightPWM = 0;
+            this.haltMotors();
+            return;
+          }
+
+          // Motor Slew-Rate Limiter (Acceleration & Deceleration Ramping)
+          // Clamps maximum PWM change per dispatch step to prevent torque shock and chassis bounce
+          const MAX_SLEW_STEP = 18; // ~540 PWM/s at 33ms loop
+          const currentL = this.slewLeftPWM || 0;
+          const currentR = this.slewRightPWM || 0;
+
+          const stepL = Math.max(-MAX_SLEW_STEP, Math.min(MAX_SLEW_STEP, targetL - currentL));
+          const stepR = Math.max(-MAX_SLEW_STEP, Math.min(MAX_SLEW_STEP, targetR - currentR));
+
+          this.slewLeftPWM = currentL + stepL;
+          this.slewRightPWM = currentR + stepR;
+
+          const rl = Math.round(this.slewLeftPWM);
+          const rr = Math.round(this.slewRightPWM);
+
           if (rl === 0 && rr === 0) {
             this.haltMotors();
             return;
           }
-          // Skip redundant identical motor commands within 220ms to keep BLE queue 100% clear
-          const now = performance.now();
-          if (!this.isMotorHalted && Math.abs(rl - this.lastSentLeft) < 3 && Math.abs(rr - this.lastSentRight) < 3 && (now - (this.lastMotorWriteTime || 0) < 220)) {
+
+          // 85ms deduplication heartbeat: continuously satisfies ESP32 firmware 250ms watchdog
+          // without flooding BLE GATT queue
+          const timeSinceLastWrite = now - (this.lastMotorWriteTime || 0);
+          if (!this.isMotorHalted && Math.abs(rl - this.lastSentLeft) < 3 && Math.abs(rr - this.lastSentRight) < 3 && timeSinceLastWrite < 85) {
             return;
           }
+
           this.isMotorHalted = false;
           this.lastSentLeft = rl;
           this.lastSentRight = rr;
@@ -5892,7 +6126,8 @@
 
       haltMotors() {
         try {
-          // State deduplication: never flood BLE GATT queue with repeated CMD:DIR:S when already stopped!
+          this.slewLeftPWM = 0;
+          this.slewRightPWM = 0;
           if (this.isMotorHalted) return;
           this.isMotorHalted = true;
           this.lastSentLeft = 0;
@@ -9679,10 +9914,10 @@
               } else if (cmd.c === "L") {
                 simRobot.led = cmd.state === "on";
               } else if (cmd.c === "P") {
-                let val = evaluateSimExpression(cmd.v);
-                printToConsole("[SIM] " + val);
+                const printVal = evaluateSimExpression(cmd.v);
+                printToConsole("[SIM] " + printVal);
                 if (ttsEnabled) {
-                  speakOutLoud(val);
+                  speakOutLoud(printVal);
                 }
               } else if (cmd.c === "FOR") {
                 let loopBody = cmd.do || [];
@@ -9719,18 +9954,18 @@
                 simVariables[cmd.n] = evaluateSimExpression(cmd.v);
               } else if (cmd.c === "PM") {
                 // Pin Mode — custom pin or variable-pin (was silently skipped before)
-                let pin = (cmd.p !== null && typeof cmd.p === 'object') ? evaluateSimExpression(cmd.p) : cmd.p;
-                printToConsole(`[SIM] pinMode(${pin}, ${cmd.m === "IN" ? "INPUT" : "OUTPUT"})`);
+                const pmPin = (cmd.p !== null && typeof cmd.p === 'object') ? evaluateSimExpression(cmd.p) : cmd.p;
+                printToConsole(`[SIM] pinMode(${pmPin}, ${cmd.m === "IN" ? "INPUT" : "OUTPUT"})`);
               } else if (cmd.c === "DW") {
                 // Digital Write — custom pin or variable-pin (was silently skipped before)
-                let pin = (cmd.p !== null && typeof cmd.p === 'object') ? evaluateSimExpression(cmd.p) : cmd.p;
-                let val = (cmd.v !== null && typeof cmd.v === 'object') ? evaluateSimExpression(cmd.v) : Number(cmd.v);
-                printToConsole(`[SIM] digitalWrite(${pin}, ${val ? "HIGH" : "LOW"})`);
+                const dwPin = (cmd.p !== null && typeof cmd.p === 'object') ? evaluateSimExpression(cmd.p) : cmd.p;
+                const dwVal = (cmd.v !== null && typeof cmd.v === 'object') ? evaluateSimExpression(cmd.v) : Number(cmd.v);
+                printToConsole(`[SIM] digitalWrite(${dwPin}, ${dwVal ? "HIGH" : "LOW"})`);
               } else if (cmd.c === "AW") {
                 // Analog Write — custom pin or variable-pin (was silently skipped before)
-                let pin = (cmd.p !== null && typeof cmd.p === 'object') ? evaluateSimExpression(cmd.p) : cmd.p;
-                let val = evaluateSimExpression(cmd.v);
-                printToConsole(`[SIM] analogWrite(${pin}, ${Math.round(val)})`);
+                const awPin = (cmd.p !== null && typeof cmd.p === 'object') ? evaluateSimExpression(cmd.p) : cmd.p;
+                const awVal = evaluateSimExpression(cmd.v);
+                printToConsole(`[SIM] analogWrite(${awPin}, ${Math.round(awVal)})`);
               } else if (cmd.c === "BZ") {
                 simBuzzerFreq = evaluateSimExpression(cmd.f);
                 simBuzzerDur = cmd.d;
@@ -9910,88 +10145,164 @@ TUTORING STYLE:
       }
     }
 
-    // --- Reusable Streamed Response Helper (Gemini 2.5 Flash / 3.1 Flash Lite) ---
+    // --- Reusable Streamed Response Helper with Silent Background Fallback & Auto-Discovery ---
     async function streamGemini(apiKey, payload, systemText, temperature, maxTokens, onChunk, onComplete, onError) {
-      try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:streamGenerateContent?key=${apiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: payload,
-            systemInstruction: { parts: [{ text: systemText }] },
-            generationConfig: {
-              temperature: temperature,
-              maxOutputTokens: maxTokens
-            }
-          })
-        });
+      const candidates = [...getGeminiCandidateModels()];
+      const triedModels = new Set();
+      let discoveryAttempted = false;
+      let lastErr = null;
+      let meaningfulErr = null;
 
-        if (res.status !== 200) {
-          const errJson = await res.json();
-          throw new Error(errJson.error?.message || `HTTP error ${res.status}`);
+      const requestBodyStr = JSON.stringify({
+        contents: payload,
+        systemInstruction: systemText ? { parts: [{ text: systemText }] } : undefined,
+        generationConfig: {
+          temperature: temperature,
+          maxOutputTokens: maxTokens
         }
+      });
 
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder("utf-8");
-        let buffer = "";
-        let accumulatedText = "";
-        let braceCount = 0;
-        let jsonStart = -1;
-        let inString = false;
-        let escapeNext = false;
-        let scannedLength = 0;
+      for (let mIdx = 0; mIdx < candidates.length; mIdx++) {
+        const modelToTry = candidates[mIdx];
+        if (!modelToTry || triedModels.has(modelToTry)) continue;
+        triedModels.add(modelToTry);
 
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToTry}:streamGenerateContent?key=${apiKey}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: requestBodyStr
+          });
 
-          buffer += decoder.decode(value, { stream: true });
+          if (res.status !== 200) {
+            const errJson = await res.json().catch(() => ({}));
+            const errMsg = parseGeminiErrorMsg(errJson, res.status);
+            const errObj = new Error(errMsg);
+            errObj.status = res.status;
 
-          for (let i = scannedLength; i < buffer.length; i++) {
-            const char = buffer[i];
-            if (inString) {
-              if (escapeNext) {
-                escapeNext = false;
-              } else if (char === '\\') {
-                escapeNext = true;
-              } else if (char === '"') {
-                inString = false;
+            if (res.status === 404 || errMsg.toLowerCase().includes('not found') || errMsg.toLowerCase().includes('not supported')) {
+              _deadGeminiModels.add(modelToTry);
+              if (localStorage.getItem('migo_gemini_model') === modelToTry) {
+                try { localStorage.removeItem('migo_gemini_model'); } catch (e) {}
+              }
+              // Dynamically discover exact models enabled for this API key if static models 404
+              if (!discoveryAttempted) {
+                discoveryAttempted = true;
+                const discovered = await discoverAvailableGeminiModels(apiKey);
+                for (const dm of discovered) {
+                  if (!triedModels.has(dm) && !candidates.includes(dm)) {
+                    candidates.push(dm);
+                  }
+                }
               }
             } else {
-              if (char === '"') {
-                inString = true;
-              } else if (char === '{') {
-                if (braceCount === 0) jsonStart = i;
-                braceCount++;
-              } else if (char === '}') {
-                if (braceCount > 0) {
-                  braceCount--;
-                  if (braceCount === 0 && jsonStart !== -1) {
-                    const jsonStr = buffer.substring(jsonStart, i + 1);
-                    try {
-                      const obj = JSON.parse(jsonStr);
-                      const textPart = obj.candidates?.[0]?.content?.parts?.[0]?.text || "";
-                      if (textPart) {
-                        accumulatedText += textPart;
-                        onChunk(accumulatedText);
+              meaningfulErr = errObj;
+            }
+
+            console.warn(`[Gemini Fallback] Model "${modelToTry}" returned ${res.status} (${errMsg}). Falling back to next candidate in background...`);
+            lastErr = meaningfulErr || errObj;
+            continue; // Silently fallback in the background
+          }
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder("utf-8");
+          let buffer = "";
+          let accumulatedText = "";
+          let braceCount = 0;
+          let jsonStart = -1;
+          let inString = false;
+          let escapeNext = false;
+          let scannedLength = 0;
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            for (let i = scannedLength; i < buffer.length; i++) {
+              const char = buffer[i];
+              if (inString) {
+                if (escapeNext) {
+                  escapeNext = false;
+                } else if (char === '\\') {
+                  escapeNext = true;
+                } else if (char === '"') {
+                  inString = false;
+                }
+              } else {
+                if (char === '"') {
+                  inString = true;
+                } else if (char === '{') {
+                  if (braceCount === 0) jsonStart = i;
+                  braceCount++;
+                } else if (char === '}') {
+                  if (braceCount > 0) {
+                    braceCount--;
+                    if (braceCount === 0 && jsonStart !== -1) {
+                      const jsonStr = buffer.substring(jsonStart, i + 1);
+                      try {
+                        const obj = JSON.parse(jsonStr);
+                        const parts = obj.candidates?.[0]?.content?.parts || [];
+                        let textPart = "";
+                        for (const p of parts) {
+                          if (p && typeof p.text === 'string' && !p.thought) {
+                            textPart += p.text;
+                          }
+                        }
+                        if (!textPart && parts[0]?.text) textPart = parts[0].text;
+                        if (textPart) {
+                          accumulatedText += textPart;
+                          onChunk(accumulatedText);
+                        }
+                      } catch (e) {
+                        // Partial JSON, wait for more chunks
                       }
-                    } catch (e) {
-                      // Partial JSON, wait for more chunks
+                      jsonStart = -1;
                     }
-                    jsonStart = -1;
                   }
                 }
               }
             }
+            scannedLength = buffer.length;
           }
-          scannedLength = buffer.length;
-        }
 
-        onComplete(accumulatedText);
-      } catch (err) {
-        console.error("Stream Gemini API failed:", err);
-        onError(err);
+          // Fallback to non-streaming generateContent if stream closed with empty text
+          if (!accumulatedText.trim()) {
+            const syncRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToTry}:generateContent?key=${apiKey}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: requestBodyStr
+            });
+            if (syncRes.status === 200) {
+              const syncData = await syncRes.json().catch(() => ({}));
+              const parts = syncData.candidates?.[0]?.content?.parts || [];
+              for (const p of parts) {
+                if (p && typeof p.text === 'string' && !p.thought) {
+                  accumulatedText += p.text;
+                }
+              }
+              if (!accumulatedText && parts[0]?.text) accumulatedText = parts[0].text;
+              if (accumulatedText) onChunk(accumulatedText);
+            }
+          }
+
+          // Successfully completed stream! Update persistent working model
+          geminiModel = modelToTry;
+          try { localStorage.setItem('migo_gemini_model', modelToTry); } catch (e) {}
+
+          onComplete(accumulatedText);
+          return; // Success!
+
+        } catch (err) {
+          console.warn(`[Gemini Fallback] Network or stream error on "${modelToTry}":`, err);
+          lastErr = meaningfulErr || err;
+          continue;
+        }
       }
+
+      console.error("All Gemini models in fallback chain failed:", meaningfulErr || lastErr);
+      onError(meaningfulErr || lastErr || new Error("All Gemini candidate models failed to respond."));
     }
 
     // --- Gemini API Key Handshake ---
@@ -10011,43 +10322,49 @@ TUTORING STYLE:
       errorEl.classList.add('hidden');
 
       try {
-        let modelToUse = 'gemini-2.5-flash';
-        let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${key}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: "Ping" }] }]
-          })
-        });
+        const discovered = await discoverAvailableGeminiModels(key);
+        const candidates = [...new Set([...discovered, ...getGeminiCandidateModels()])];
+        let successfulModel = null;
+        let lastErr = null;
+        let meaningfulErr = null;
 
-        if (res.status !== 200) {
-          const errJson = await res.json().catch(() => ({}));
-          const errMsg = errJson.error?.message || "";
-          if (errMsg.includes("gemini-2.5-flash") || errMsg.includes("not available") || res.status === 400 || res.status === 403) {
-            console.warn("gemini-2.5-flash restricted or unavailable. Fallback to gemini-3.1-flash-lite...");
-            modelToUse = 'gemini-3.1-flash-lite';
-            res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${key}`, {
+        for (const modelToTest of candidates) {
+          try {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToTest}:generateContent?key=${key}`, {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              },
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 contents: [{ parts: [{ text: "Ping" }] }]
               })
             });
+
+            if (res.status === 200) {
+              successfulModel = modelToTest;
+              break;
+            } else {
+              const errJson = await res.json().catch(() => ({}));
+              const errMsg = parseGeminiErrorMsg(errJson, res.status);
+              const errObj = new Error(errMsg);
+              errObj.status = res.status;
+              if (res.status === 404) {
+                _deadGeminiModels.add(modelToTest);
+              } else {
+                meaningfulErr = errObj;
+              }
+              lastErr = meaningfulErr || errObj;
+            }
+          } catch (e) {
+            lastErr = meaningfulErr || e;
           }
         }
 
-        if (res.status === 200) {
+        if (successfulModel) {
           localStorage.setItem('migo_gemini_api_key', key);
-          localStorage.setItem('migo_gemini_model', modelToUse);
-          geminiModel = modelToUse;
+          localStorage.setItem('migo_gemini_model', successfulModel);
+          geminiModel = successfulModel;
           unlockChat();
         } else {
-          const errJson = await res.json();
-          throw new Error(errJson.error?.message || "Invalid API Key Response");
+          throw (meaningfulErr || lastErr || new Error("Validation failed: Unable to connect to Gemini API models."));
         }
       } catch (err) {
         console.error("API validation failed:", err);
@@ -10366,7 +10683,7 @@ DIAGNOSIS INSTRUCTIONS:
       return formattedLines.join("\n");
     }
 
-    function appendMessage(role, text) {
+    function appendMessage(role, text, imageAttachment = null) {
       const msgs = document.getElementById('chatMessages');
       const bubble = document.createElement('div');
 
@@ -10385,9 +10702,21 @@ DIAGNOSIS INSTRUCTIONS:
 
       if (role === 'user') {
         bubble.className = "flex justify-end animate-fade-in";
+        let imageHtml = '';
+        if (imageAttachment) {
+          const imgSrc = imageAttachment.dataUrl || (imageAttachment.mimeType && imageAttachment.base64Data ? `data:${imageAttachment.mimeType};base64,${imageAttachment.base64Data}` : '');
+          if (imgSrc) {
+            imageHtml = `
+              <div class="mb-1.5 overflow-hidden rounded-xl border border-black/10 bg-black/10 max-w-full">
+                <img src="${imgSrc}" class="max-w-full max-h-60 rounded-xl object-contain cursor-pointer hover:opacity-90 transition-opacity" alt="Shared photo" title="Click to view full image" onclick="window.open(this.src, '_blank')">
+              </div>
+            `;
+          }
+        }
         bubble.innerHTML = `
-          <div class="bg-amber-500 text-black font-semibold rounded-2xl rounded-tr-none py-2 px-3 max-w-[85%] break-words shadow text-xs">
-            ${formattedHtml}
+          <div class="bg-amber-500 text-black font-semibold rounded-2xl rounded-tr-none py-2 px-3 max-w-[85%] break-words shadow text-xs flex flex-col">
+            ${imageHtml}
+            ${formattedHtml ? `<div>${formattedHtml}</div>` : ''}
           </div>
         `;
       } else {
@@ -11531,18 +11860,136 @@ ${JSON.stringify(workspaceState, null, 2)}
       }
     }
 
+    // --- AIONA Image Attachment & Vision Helpers ---
+    let aionaPendingImage = null; // { dataUrl, base64Data, mimeType, name, size }
+
+    function triggerAionaImageUpload() {
+      const fileInput = document.getElementById('aionaImageFileInput');
+      if (fileInput) {
+        fileInput.value = '';
+        fileInput.click();
+      }
+    }
+
+    function handleAionaImageSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      processAionaImageFile(file);
+    }
+
+    function processAionaImageFile(file) {
+      if (!file || !file.type.startsWith('image/')) {
+        console.warn('[AIONA Image] Selected file is not an image.');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const rawDataUrl = e.target.result;
+        const img = new Image();
+        img.onload = () => {
+          // Normalize and resize to max 1280px on longest edge for fast upload & token economy
+          const maxDim = 1280;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+
+          const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+          const quality = mimeType === 'image/jpeg' ? 0.85 : undefined;
+          const optimizedDataUrl = canvas.toDataURL(mimeType, quality);
+          const base64Data = optimizedDataUrl.split(',')[1];
+
+          aionaPendingImage = {
+            dataUrl: optimizedDataUrl,
+            base64Data: base64Data,
+            mimeType: mimeType,
+            name: file.name || 'photo.jpg',
+            size: Math.round(base64Data.length * 0.75)
+          };
+
+          const previewContainer = document.getElementById('aionaImagePreviewContainer');
+          const previewThumb = document.getElementById('aionaImagePreviewThumbnail');
+          const previewName = document.getElementById('aionaImagePreviewName');
+          const previewSize = document.getElementById('aionaImagePreviewSize');
+
+          if (previewContainer && previewThumb) {
+            previewThumb.src = optimizedDataUrl;
+            if (previewName) previewName.innerText = aionaPendingImage.name;
+            if (previewSize) previewSize.innerText = `${Math.round(aionaPendingImage.size / 1024)} KB`;
+            previewContainer.classList.remove('hidden');
+          }
+
+          const textarea = document.getElementById('aionaInputText');
+          if (textarea) textarea.focus();
+        };
+        img.src = rawDataUrl;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearAionaPendingImage() {
+      aionaPendingImage = null;
+      const previewContainer = document.getElementById('aionaImagePreviewContainer');
+      const previewThumb = document.getElementById('aionaImagePreviewThumbnail');
+      const fileInput = document.getElementById('aionaImageFileInput');
+      if (previewContainer) previewContainer.classList.add('hidden');
+      if (previewThumb) previewThumb.src = '';
+      if (fileInput) fileInput.value = '';
+    }
+
+    // Support pasting screenshots directly into AIONA chat
+    document.addEventListener('DOMContentLoaded', () => {
+      const aionaInput = document.getElementById('aionaInputText');
+      if (aionaInput) {
+        aionaInput.addEventListener('paste', (e) => {
+          const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+          if (items) {
+            for (const item of items) {
+              if (item.type.indexOf('image') === 0) {
+                const blob = item.getAsFile();
+                if (blob) {
+                  processAionaImageFile(blob);
+                  e.preventDefault();
+                  break;
+                }
+              }
+            }
+          }
+        });
+      }
+    });
+
     function aionaSendMessage() {
       const input = document.getElementById('aionaInputText');
       if (!input) return;
       const text = input.value.trim();
-      if (!text) return;
+      const imageToAttach = aionaPendingImage;
+
+      if (!text && !imageToAttach) return;
+
       input.value = '';
       adjustAionaInputHeight();
+      clearAionaPendingImage();
+
       // Route to Conversation Mode handler if active, otherwise normal AIONA chat
       if (typeof convModeActive !== 'undefined' && convModeActive) {
         handleConvModeInputSubmit(text);
       } else {
-        window.aionaSendMessageText(text);
+        window.aionaSendMessageText(text, false, imageToAttach);
       }
     }
 
@@ -11946,9 +12393,9 @@ ${JSON.stringify(workspaceState, null, 2)}
       }
     }
 
-    async function aionaSendMessageText(text, isAutoCorrection = false) {
+    async function aionaSendMessageText(text, isAutoCorrection = false, imageAttachment = null) {
       if (typeof window.aionaSendMessageText === 'function' && window.aionaSendMessageText !== aionaSendMessageText) {
-        return window.aionaSendMessageText(text, isAutoCorrection);
+        return window.aionaSendMessageText(text, isAutoCorrection, imageAttachment);
       }
       const apiKey = localStorage.getItem('migo_gemini_api_key');
       if (!apiKey) {
@@ -12011,6 +12458,12 @@ CURRENT PERSON IN VIEW (RECOGNIZED BY MIGO VISION):
 ${window.migoVision.currentRecognizedPerson}
 (Note: You can see ${window.migoVision.currentRecognizedPerson} in front of you right now! Warmly address ${window.migoVision.currentRecognizedPerson} by their name during your conversation.)
 ` : ''}
+PHOTO & IMAGE UNDERSTANDING AND INSIGHTS:
+When the user uploads or shares a photo/picture:
+1. Enthusiastically examine what is in the photo (objects, colors, drawings, people, electronics, robotics parts, STEM projects, animals, environments).
+2. Provide thoughtful, intelligent, and positive observations, feedback, and insights about the image.
+3. Keep your explanation friendly, educational, inspiring, and aligned with your supportive MIGO desk companion persona!
+
 COMMAND SEQUENCING ("Do what I say"):
 If the user asks you to perform actions, movements, or tells you "Do what I say", you MUST compile these actions into a structured JSON array and wrap it inside <aiona-commands>...</aiona-commands> at the very end of your response.
 You can chain up to 30 actions.
@@ -12128,26 +12581,60 @@ Choose the tag that best represents the tone of your text. Do not include any ot
         });
       });
 
+      const currentTurnParts = [];
+      if (imageAttachment && imageAttachment.base64Data) {
+        currentTurnParts.push({
+          inlineData: {
+            mimeType: imageAttachment.mimeType || 'image/jpeg',
+            data: imageAttachment.base64Data
+          }
+        });
+      }
+
+      const promptText = text || (imageAttachment ? "Please look at this photo I uploaded. Tell me what you observe, provide intelligent feedback, and share insights!" : "");
+      currentTurnParts.push({ text: promptText });
+
       payloadContents.push({
         role: 'user',
-        parts: [{ text: text }]
+        parts: currentTurnParts
       });
 
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: payloadContents,
-            systemInstruction: { parts: [{ text: aionaPrompt }] },
-            generationConfig: {
-              temperature: 0.8,
-              maxOutputTokens: 2048
-            }
-          })
-        });
+        const candidates = getGeminiCandidateModels();
+        let res = null;
+        let successfulModel = null;
 
-        if (res.status === 200) {
+        for (const modelToTry of candidates) {
+          try {
+            const candidateRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToTry}:generateContent?key=${apiKey}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: payloadContents,
+                systemInstruction: { parts: [{ text: aionaPrompt }] },
+                generationConfig: {
+                  temperature: 0.8,
+                  maxOutputTokens: 2048
+                }
+              })
+            });
+
+            if (candidateRes.status === 200) {
+              res = candidateRes;
+              successfulModel = modelToTry;
+              geminiModel = modelToTry;
+              try { localStorage.setItem('migo_gemini_model', modelToTry); } catch (e) {}
+              break;
+            } else {
+              console.warn(`[Gemini Fallback] Model "${modelToTry}" returned ${candidateRes.status}. Falling back to next candidate...`);
+              res = candidateRes;
+            }
+          } catch (e) {
+            console.warn(`[Gemini Fallback] Network error on "${modelToTry}":`, e);
+          }
+        }
+
+        if (res && res.status === 200) {
           const data = await res.json();
           const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || "I am happy to be here with you!";
 
@@ -12854,7 +13341,7 @@ Choose the tag that best represents the tone of your text. Do not include any ot
       sendCmd(`CMD:FACE:${expression}`);
     }
 
-    function appendAionaMessage(role, text, migoIndex = null) {
+    function appendAionaMessage(role, text, migoIndex = null, imageAttachment = null) {
       const msgs = document.getElementById('aionaChatMessages');
       if (!msgs) return;
 
@@ -12888,9 +13375,21 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
       if (role === 'user') {
         bubble.className = "flex justify-end animate-fade-in";
+        let imageHtml = '';
+        if (imageAttachment) {
+          const imgSrc = imageAttachment.dataUrl || (imageAttachment.mimeType && imageAttachment.base64Data ? `data:${imageAttachment.mimeType};base64,${imageAttachment.base64Data}` : '');
+          if (imgSrc) {
+            imageHtml = `
+              <div class="mb-1.5 overflow-hidden rounded-xl border border-black/10 bg-black/10 max-w-full">
+                <img src="${imgSrc}" class="max-w-full max-h-60 rounded-xl object-contain cursor-pointer hover:opacity-90 transition-opacity" alt="Shared photo" title="Click to view full image" onclick="window.open(this.src, '_blank')">
+              </div>
+            `;
+          }
+        }
         bubble.innerHTML = `
-          <div class="bg-amber-500 text-black font-semibold rounded-2xl rounded-tr-none py-2 px-3 max-w-[85%] break-words shadow text-xs">
-            ${formattedHtml}
+          <div class="bg-amber-500 text-black font-semibold rounded-2xl rounded-tr-none py-2 px-3 max-w-[85%] break-words shadow text-xs flex flex-col">
+            ${imageHtml}
+            ${formattedHtml ? `<div>${formattedHtml}</div>` : ''}
           </div>
         `;
       } else if (migoIndex !== null) {
@@ -15439,39 +15938,46 @@ await migo.sendFace("SMILE");`;
       errorEl.classList.add('hidden');
 
       try {
-        let modelToUse = 'gemini-2.5-flash';
-        let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${key}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: "Ping" }] }]
-          })
-        });
+        const discovered = await discoverAvailableGeminiModels(key);
+        const candidates = [...new Set([...discovered, ...getGeminiCandidateModels()])];
+        let successfulModel = null;
+        let lastErr = null;
+        let meaningfulErr = null;
 
-        if (res.status !== 200) {
-          const errJson = await res.json().catch(() => ({}));
-          const errMsg = errJson.error?.message || "";
-          if (errMsg.includes("gemini-2.5-flash") || errMsg.includes("not available") || res.status === 400 || res.status === 403) {
-            console.warn("gemini-2.5-flash restricted or unavailable. Fallback to gemini-3.1-flash-lite...");
-            modelToUse = 'gemini-3.1-flash-lite';
-            res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${key}`, {
+        for (const modelToTest of candidates) {
+          try {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelToTest}:generateContent?key=${key}`, {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              },
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 contents: [{ parts: [{ text: "Ping" }] }]
               })
             });
+
+            if (res.status === 200) {
+              successfulModel = modelToTest;
+              break;
+            } else {
+              const errJson = await res.json().catch(() => ({}));
+              const errMsg = parseGeminiErrorMsg(errJson, res.status);
+              const errObj = new Error(errMsg);
+              errObj.status = res.status;
+              if (res.status === 404) {
+                _deadGeminiModels.add(modelToTest);
+              } else {
+                meaningfulErr = errObj;
+              }
+              lastErr = meaningfulErr || errObj;
+            }
+          } catch (e) {
+            lastErr = meaningfulErr || e;
           }
         }
 
-        if (res.status === 200) {
+        if (successfulModel) {
           localStorage.setItem('migo_gemini_api_key', key);
-          localStorage.setItem('migo_gemini_model', modelToUse);
-          geminiModel = modelToUse;
+          localStorage.setItem('migo_gemini_model', successfulModel);
+          geminiModel = successfulModel;
 
           // Sync main/landing setup screen input if present
           const mainInput = document.getElementById('geminiApiKeyInput');
@@ -15496,8 +16002,7 @@ await migo.sendFace("SMILE");`;
           }, 3000);
 
         } else {
-          const errJson = await res.json();
-          throw new Error(errJson.error?.message || "Invalid API Key Response");
+          throw (lastErr || new Error("Validation failed: Unable to connect to Gemini API models."));
         }
       } catch (err) {
         console.error("API validation failed:", err);
@@ -16212,19 +16717,23 @@ await migo.sendFace("SMILE");`;
       const input = document.getElementById('aionaInputText');
       if (!input) return;
       const text = input.value.trim();
-      if (!text) return;
+      const imageToAttach = aionaPendingImage;
+
+      if (!text && !imageToAttach) return;
+
       input.value = '';
       adjustAionaInputHeight();
+      clearAionaPendingImage();
 
       if (typeof convModeActive !== 'undefined' && convModeActive) {
         handleConvModeInputSubmit(text);
         return;
       }
 
-      window.aionaSendMessageText(text);
+      window.aionaSendMessageText(text, false, imageToAttach);
     };
 
-    window.aionaSendMessageText = async function (text, isAutoCorrection = false) {
+    window.aionaSendMessageText = async function (text, isAutoCorrection = false, imageAttachment = null) {
       const apiKey = localStorage.getItem('migo_gemini_api_key');
       if (!apiKey) {
         alert("AIONA requires a Gemini API Key. Please enter it in the Chat setup screen first!");
@@ -16240,7 +16749,7 @@ await migo.sendFace("SMILE");`;
       if (currentAionaSequenceAbort) { currentAionaSequenceAbort(); currentAionaSequenceAbort = null; }
 
       if (!isAutoCorrection) {
-        appendAionaMessage('user', text);
+        appendAionaMessage('user', text, null, imageAttachment);
       } else {
         SuperAIONATaskEngine.log("Transmitting error logs to AI brain...", "system");
       }
@@ -16303,6 +16812,12 @@ CURRENT PERSON IN VIEW (RECOGNIZED BY MIGO VISION):
 ${window.migoVision.currentRecognizedPerson}
 (Note: You can see ${window.migoVision.currentRecognizedPerson} in front of you right now! Warmly address ${window.migoVision.currentRecognizedPerson} by their name during your conversation.)
 ` : ''}
+PHOTO & IMAGE UNDERSTANDING AND INSIGHTS:
+When the user uploads or shares a photo/picture:
+1. Enthusiastically examine what is in the photo (objects, colors, drawings, people, electronics, robotics parts, STEM projects, animals, environments).
+2. Provide thoughtful, intelligent, and positive observations, feedback, and insights about the image.
+3. Keep your explanation friendly, educational, inspiring, and aligned with your supportive MIGO desk companion persona!
+
 COMMAND SEQUENCING ("Do what I say"):
 If the user asks you to perform actions, movements, or tells you "Do what I say", you MUST compile these actions into a structured JSON array and wrap it inside <aiona-commands>...</aiona-commands> at the very end of your response.
 You can chain up to 30 actions.
@@ -16548,7 +17063,19 @@ Choose the tag that best represents the tone of your text. Do not include any ot
 
       const payloadContents = [];
       chatHistory.forEach(h => { payloadContents.push({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.text }] }); });
-      payloadContents.push({ role: 'user', parts: [{ text: text }] });
+
+      const currentTurnParts = [];
+      if (imageAttachment && imageAttachment.base64Data) {
+        currentTurnParts.push({
+          inlineData: {
+            mimeType: imageAttachment.mimeType || 'image/jpeg',
+            data: imageAttachment.base64Data
+          }
+        });
+      }
+      const promptText = text || (imageAttachment ? "Please look at this photo I uploaded. Tell me what you observe, provide intelligent feedback, and share insights!" : "");
+      currentTurnParts.push({ text: promptText });
+      payloadContents.push({ role: 'user', parts: currentTurnParts });
 
       // Create a temporary streaming bubble
       const aionaMsgs = document.getElementById('aionaChatMessages');
@@ -16688,8 +17215,8 @@ Choose the tag that best represents the tone of your text. Do not include any ot
             let commands = parseResult.commands;
 
             // Check for Timer Intent in user prompt (e.g. "set a timer for 3 minutes", "countdown 5 mins")
-            const timerMatch = text.match(/(?:timer|countdown|alarm)\s+(?:for\s+)?(\d+)\s*(min|minute|sec|second|hr|hour)?/i) ||
-              text.match(/(\d+)\s*(min|minute|sec|second)\s+(?:timer|countdown)/i);
+            const timerMatch = promptText.match(/(?:timer|countdown|alarm)\s+(?:for\s+)?(\d+)\s*(min|minute|sec|second|hr|hour)?/i) ||
+              promptText.match(/(\d+)\s*(min|minute|sec|second)\s+(?:timer|countdown)/i);
             if (timerMatch) {
               let val = parseInt(timerMatch[1]);
               let unit = (timerMatch[2] || 'min').toLowerCase();
@@ -16700,16 +17227,17 @@ Choose the tag that best represents the tone of your text. Do not include any ot
             }
 
             const modelHistoryText = extractedSuperCode ? `${cleanResponse}\n<super-aiona-script>\n${extractedSuperCode}\n</super-aiona-script>` : cleanResponse;
-            chatHistory.push({ role: 'user', text: text });
+            const historyUserText = imageAttachment ? `[Uploaded photo: "${imageAttachment.name || 'photo.jpg'}"] ${promptText}` : promptText;
+            chatHistory.push({ role: 'user', text: historyUserText });
             chatHistory.push({ role: 'model', text: modelHistoryText });
             if (chatHistory.length > 8) chatHistory.splice(0, 2);
 
             appendAionaMessage('aiona', cleanResponse);
-            aionaExecuteResponseBehavior(cleanResponse, emotion, commands, text);
+            aionaExecuteResponseBehavior(cleanResponse, emotion, commands, promptText);
           },
           (err) => {
             if (aionaStreamBubble.parentNode) aionaStreamBubble.remove();
-            appendAionaMessage('aiona', "I encountered a little cloud in my neural core: " + (err.message || "Check API configuration."));
+            appendAionaMessage('aiona', friendlyErrorMessage(err));
             sendCmd('CMD:FACE:IDLE'); smoothLowerArm(true); setAionaState('idle');
             if (aionaWakeWordActive) startAionaWakeWordScanner();
           }

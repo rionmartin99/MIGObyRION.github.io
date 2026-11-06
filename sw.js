@@ -1,15 +1,15 @@
 /*
- * Version: 9.17.0
+ * Version: 9.18.3
  * Change Log:
+ * [Nov 06, 2026 01:25 PM] Feature: Implemented decoupled dual-loop vision control with Schmitt trigger hysteresis, 30Hz deterministic trajectory engine, and progressive breakaway ramping for smooth jitter-free robot tracking.
+ * [Nov 06, 2026 04:30 AM] Fix: Restored active production Gemini 2.0/1.5 models to fix HTTP 404 errors, resolved simulation variable redeclaration diagnostics, and added motor slew-rate ramping, soft-start deadband, and 85ms BLE heartbeat for smooth jitter-free robot motion.
+ * [Nov 06, 2026 03:25 AM] Fix: Resolved HTTP 404 Gemini API connectivity error by adding dynamic ListModels auto-discovery fallback and fixing multimodal image payload injection in Super AIONA stream handler.
+ * [Nov 05, 2026 10:15 PM] Feature: Upgraded AI core with automatic multi-model background fallback and enabled photo upload with intelligent visual feedback in AIONA companion chat.
  * [Nov 04, 2026 10:00 PM] Feature: Enhanced Color Tracker and Optical Line Follower accuracy with Otsu dynamic thresholding, spatial cluster rejection, and 1€ adaptive de-jitter filtering across all AI perception models.
- * [Nov 04, 2026 09:35 PM] Fix: Optimized mobile responsive layout for ESP32-CAM settings card and MIGO Vision HUD with flex-wrap button groups, touch targets, and overflow safety.
- * [Nov 04, 2026 04:08 PM] Fix: Resolved syntax errors in triggerSpeechLifelikeAnimation nested blocks and cleaned corrupted diff preview text in testAndSaveApiKey.
- * [Nov 04, 2026 04:00 PM] Fix: Removed incompatible boolean vision reporter blocks from Explorer mode toolbox to maintain clean, non-conditional beginner visual coding.
- * [Nov 04, 2026 03:45 PM] Fix: Disabled talking animations and speech motor/servo gestures in Explorer and Inventor modes so user code runs uninterrupted.
  */
 
-// MIGO Controller Service Worker v9.14.2
-const APP_CACHE_NAME = 'migo-controller-cache-v9.17.0';
+// MIGO Controller Service Worker v9.18.3
+const APP_CACHE_NAME = 'migo-controller-cache-v9.18.3';
 const AI_MODEL_CACHE_NAME = 'migo-ai-models-persistent-v1';
 
 // Core local assets to cache on install
