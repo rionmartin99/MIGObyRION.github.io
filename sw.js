@@ -1,15 +1,15 @@
 /*
- * Version: 9.18.3
+ * Version: 9.25.0
  * Change Log:
- * [Nov 06, 2026 01:25 PM] Feature: Implemented decoupled dual-loop vision control with Schmitt trigger hysteresis, 30Hz deterministic trajectory engine, and progressive breakaway ramping for smooth jitter-free robot tracking.
- * [Nov 06, 2026 04:30 AM] Fix: Restored active production Gemini 2.0/1.5 models to fix HTTP 404 errors, resolved simulation variable redeclaration diagnostics, and added motor slew-rate ramping, soft-start deadband, and 85ms BLE heartbeat for smooth jitter-free robot motion.
- * [Nov 06, 2026 03:25 AM] Fix: Resolved HTTP 404 Gemini API connectivity error by adding dynamic ListModels auto-discovery fallback and fixing multimodal image payload injection in Super AIONA stream handler.
- * [Nov 05, 2026 10:15 PM] Feature: Upgraded AI core with automatic multi-model background fallback and enabled photo upload with intelligent visual feedback in AIONA companion chat.
- * [Nov 04, 2026 10:00 PM] Feature: Enhanced Color Tracker and Optical Line Follower accuracy with Otsu dynamic thresholding, spatial cluster rejection, and 1€ adaptive de-jitter filtering across all AI perception models.
+ * [Nov 07, 2026 05:30 PM] Feature: Added vertical camera flip (upside-down toggle) alongside horizontal mirror with instant 0ms canvas transform, and transformed Flip, Mirror, Front/Back, Flashlight, and Video/Telemetry toolbar controls into compact icon-only buttons with interactive tooltips and active state glows.
+ * [Nov 07, 2026 05:00 PM] Fix: Fixed dark underexposed ESP32-CAM video stream by removing artificial canvas contrast darkening, automatically injecting +2 exposure/brightness/32x gain parameters upon connection, and optimizing COCO-SSD object detection defaults (Any Object default, 35% confidence floor).
+ * [Nov 07, 2026 04:45 PM] Feature: Added high-power Flash/Flashlight toggle function to MIGO Vision supporting both ESP32-CAM hardware LED (GPIO 4) via HTTP/WebSocket and smartphone torch via MediaStreamTrack constraints.
+ * [Nov 07, 2026 04:30 PM] Fix: Replaced global pixel averaging in Line Tracking with multi-scale 1D symmetric valley/ridge stripe detection, dual-contrast edge-pair validation, ground trajectory tracking across 5 lookahead probe bands, and AR trajectory overlays, preventing dark desks/shadows from falsely pulling line centroids.
+ * [Nov 07, 2026 03:45 PM] Fix: Fixed Telemetry mode blinding AI perception by keeping background frame decoding active, upgraded ESP32-CAM OV2640 ISP & canvas clarity for AI models, and overhauled 1-Euro/median de-jitter across all Vision models, 21-landmark hand skeleton, gaze tracking, and distance hysteresis.
  */
 
-// MIGO Controller Service Worker v9.18.3
-const APP_CACHE_NAME = 'migo-controller-cache-v9.18.3';
+// MIGO Controller Service Worker v9.25.0
+const APP_CACHE_NAME = 'migo-controller-cache-v9.25.0';
 const AI_MODEL_CACHE_NAME = 'migo-ai-models-persistent-v1';
 
 // Core local assets to cache on install

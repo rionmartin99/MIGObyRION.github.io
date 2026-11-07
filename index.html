@@ -1,11 +1,11 @@
 <!--
-  MIGO Web Controller | Version: 9.18.3
+  MIGO Web Controller | Version: 9.26.0
   Change Log:
-  [Nov 06, 2026 01:25 PM] Feature: Implemented decoupled dual-loop vision control with Schmitt trigger hysteresis, 30Hz deterministic trajectory engine, and progressive breakaway ramping for smooth jitter-free robot tracking.
-  [Nov 06, 2026 04:30 AM] Fix: Restored active production Gemini 2.0/1.5 models to fix HTTP 404 errors, resolved simulation variable redeclaration diagnostics, and added motor slew-rate ramping, soft-start deadband, and 85ms BLE heartbeat for smooth jitter-free robot motion.
-  [Nov 06, 2026 03:25 AM] Fix: Resolved HTTP 404 Gemini API connectivity error by adding dynamic ListModels auto-discovery fallback and fixing multimodal image payload injection in Super AIONA stream handler.
-  [Nov 05, 2026 10:15 PM] Feature: Upgraded AI core with automatic multi-model background fallback and enabled photo upload with intelligent visual feedback in AIONA companion chat.
-  [Nov 04, 2026 10:00 PM] Feature: Enhanced Color Tracker and Optical Line Follower accuracy with Otsu dynamic thresholding, spatial cluster rejection, and 1€ adaptive de-jitter filtering across all AI perception models.
+  [Nov 07, 2026 09:30 PM] Feature: Added real-time Canvas Brightness/Contrast Slider & Auto Low-Light Night Boost (adaptive shadow-lift gamma LUT) in MIGO Vision so both the live viewport and AI models (Handpose, BlazeFace, COCO-SSD) see bright frames, and fixed the narrow video stream bug by enforcing shrink-0 full-width 4:3 edge-to-edge rendering.
+  [Nov 07, 2026 05:30 PM] Feature: Added vertical camera flip (upside-down toggle) alongside horizontal mirror with instant 0ms canvas transform, and transformed Flip, Mirror, Front/Back, Flashlight, and Video/Telemetry toolbar controls into compact icon-only buttons with interactive tooltips and active state glows.
+  [Nov 07, 2026 05:00 PM] Fix: Fixed dark underexposed ESP32-CAM video stream by removing artificial canvas contrast darkening, automatically injecting +2 exposure/brightness/32x gain parameters upon connection, and optimizing COCO-SSD object detection defaults (Any Object default, 35% confidence floor).
+  [Nov 07, 2026 04:45 PM] Feature: Added high-power Flash/Flashlight toggle function to MIGO Vision supporting both ESP32-CAM hardware LED (GPIO 4) via HTTP/WebSocket and smartphone torch via MediaStreamTrack constraints.
+  [Nov 07, 2026 04:30 PM] Fix: Replaced global pixel averaging in Line Tracking with multi-scale 1D symmetric valley/ridge stripe detection, dual-contrast edge-pair validation, ground trajectory tracking across 5 lookahead probe bands, and AR trajectory overlays, preventing dark desks/shadows from falsely pulling line centroids.
 -->
 
 <!DOCTYPE html>
@@ -14,7 +14,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>MIGO Robot Controller v9.18.3 (Super AIONA + Vision)</title>
+  <title>MIGO Robot Controller v9.26.0 (Super AIONA + Vision)</title>
 
   <!-- PWA Manifest & Theme -->
   <link rel="manifest" href="./manifest.json">
@@ -1164,177 +1164,232 @@
     <i class="ph-bold ph-x-circle text-xl text-white/80 ml-2"></i>
   </div>
 
-  <!-- GUIDE MODAL -->
+    <!-- GUIDE MODAL (Enhanced v7 Kid-Friendly Format + Full v9 Inventor & Vision Features) -->
   <div id="guideModal"
-    class="hidden absolute inset-0 z-[110] flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    class="hidden absolute inset-0 z-[110] flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm p-3 md:p-4">
     <div
-      class="glass-panel bg-teal-900/95 p-6 max-w-2xl w-full max-h-full overflow-y-auto relative rounded-2xl border-amber-500/50 border-2 shadow-2xl">
+      class="glass-panel bg-teal-900/95 p-5 md:p-6 max-w-4xl w-full max-h-[90%] overflow-y-auto relative text-teal-50 border-amber-500/50 border-2 rounded-2xl shadow-2xl">
       <button onclick="document.getElementById('guideModal').classList.add('hidden')"
-        class="absolute top-4 right-4 bg-red-500 hover:bg-red-600 w-8 h-8 rounded-full font-bold flex items-center justify-center transition-transform active:scale-90"><i
-          class="ph-bold ph-x text-white"></i></button>
+        class="sticky top-0 float-right z-20 bg-red-500 hover:bg-red-600 w-8 h-8 rounded-full font-bold flex items-center justify-center transition-transform active:scale-90 shadow-lg">
+        <i class="ph-bold ph-x text-white"></i>
+      </button>
+      <h2 class="text-2xl font-bold text-amber-400 mb-2 flex items-center gap-2">
+        <i class="ph-bold ph-book-open"></i> MIGO User Guide
+      </h2>
+      <p class="text-xs text-teal-200/80 mb-4">Your friendly handbook for building, driving, and coding MIGO in <b>Explorer Mode</b> and <b>Inventor Mode</b>!</p>
 
-      <h2 class="text-3xl font-bold mb-4 text-amber-400 border-b border-amber-400/30 pb-2">MIGO User Guide</h2>
+      <!-- Quick Jump Bar -->
+      <div class="flex flex-wrap gap-1.5 mb-5 pb-3 border-b border-white/15 text-xs font-bold">
+        <a href="#guideSec_connect" class="px-2.5 py-1 rounded-lg bg-black/30 hover:bg-amber-500 hover:text-black text-amber-300 transition-colors">1. Connecting &amp; Pairing</a>
+        <a href="#guideSec_coding" class="px-2.5 py-1 rounded-lg bg-black/30 hover:bg-amber-500 hover:text-black text-sky-300 transition-colors">2. Coding &amp; Simulator</a>
+        <a href="#guideSec_plugs" class="px-2.5 py-1 rounded-lg bg-black/30 hover:bg-amber-500 hover:text-black text-green-300 transition-colors">3. Plugs &amp; Pins</a>
+        <a href="#guideSec_vision" class="px-2.5 py-1 rounded-lg bg-black/30 hover:bg-amber-500 hover:text-black text-teal-300 transition-colors">4. MIGO Vision &amp; Camera</a>
+        <a href="#guideSec_aiona" class="px-2.5 py-1 rounded-lg bg-black/30 hover:bg-amber-500 hover:text-black text-purple-300 transition-colors">5. Super AIONA AI</a>
+        <a href="#guideSec_blocks" class="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-400/40 hover:bg-amber-500 hover:text-black text-amber-300 transition-colors">6. Complete Blocks Guide</a>
+      </div>
 
-      <div class="space-y-4 text-sm leading-relaxed text-teal-50">
-        <section>
-          <h3 class="text-xl font-bold text-white mb-1"><i class="ph-fill ph-bluetooth text-blue-400"></i> Connecting
+      <div class="space-y-6 text-sm leading-relaxed">
+
+        <!-- SECTION 1: CONNECTING & PAIRING -->
+        <section id="guideSec_connect">
+          <h3 class="text-lg font-bold text-white border-b border-white/20 pb-1 mb-2 text-amber-300">
+            <i class="ph-bold ph-bluetooth"></i> 1. Connecting, 1-to-1 Pairing &amp; Unpairing
           </h3>
-          <p>Turn on MIGO, then tap the <b>Connect</b> button on the left. Select "Migo_Web_Bot_v4", "Migo_Web_Bot_v3",
-            or "Migo_Web_Bot_v2"
-            from the BLE pairing popup list.</p>
+          <p>MIGO connects wirelessly using <b>Web Bluetooth</b> (works best in Chrome or Edge on Android, Windows, Mac, or Chromebook). Ensure your robot is switched ON, then tap the <b>Connect</b> button in the top bar and pick your robot (such as <code>Migo_Web_Bot_v8</code> or <code>Migo_Web_Bot_v5</code>).</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5 mt-3 text-xs">
+            <div class="bg-black/25 p-3 rounded-xl border border-white/10">
+              <strong class="text-amber-300 block mb-1"><i class="ph-bold ph-lock-key"></i> Dedicated 1-to-1 Pairing:</strong>
+              Once you connect to a MIGO robot, it locks onto your tablet or laptop so classmates don't accidentally hijack your robot during class! Next time you turn MIGO on, your browser can reconnect automatically.
+            </div>
+            <div class="bg-black/25 p-3 rounded-xl border border-white/10">
+              <strong class="text-teal-300 block mb-1"><i class="ph-bold ph-hand-palm"></i> How to Unpair / Switch Pilots:</strong>
+              <b>Hand-Cover Trick:</b> Hold your hand very close (within <b>5 cm</b>) in front of MIGO's Ultrasonic eyes for <b>5 seconds</b> until it chirps! Or open <b>Settings ⚙️</b> and tap <b>Unpair / Forget Robot</b>.
+            </div>
+          </div>
+          <p class="mt-2 text-xs text-teal-200"><i class="ph-bold ph-cpu"></i> <b>MIGO Devices Manager:</b> Tap the <b>Devices</b> button in the top bar to manage your Main Robot Chassis, connect extra Wireless Sensor Nodes, or link your ESP32-CAM in one place.</p>
         </section>
 
-        <section>
-          <h3 class="text-xl font-bold text-white mb-1"><i class="ph-fill ph-puzzle-piece text-amber-400"></i> Coding
-            Basics</h3>
-          <p>Drag blocks from the left menu into the workspace. Your code must be snapped inside the <b>Setup</b> block
-            (runs once) or the <b>Loop</b> block (runs forever) to work.</p>
-        </section>
-
-        <section>
-          <h3 class="text-xl font-bold text-white mb-1"><i class="ph-fill ph-plug text-green-400"></i> Hardware Plugs
+        <!-- SECTION 2: CODING BASICS, INVENTOR MODE & SIMULATOR -->
+        <section id="guideSec_coding">
+          <h3 class="text-lg font-bold text-white border-b border-white/20 pb-1 mb-2 text-sky-300">
+            <i class="ph-bold ph-code"></i> 2. Coding Basics, Inventor Mode &amp; Simulator
           </h3>
-          <p>MIGO uses simple Plugs instead of complicated pin numbers. Connect your wires to these pins on the ESP32
-            board:</p>
-          <ul class="list-disc pl-5 mt-1 space-y-1 text-xs md:text-sm">
-            <li><b>Plug A (Pin 34):</b> Use for sensors (Buttons, Knobs, Light Sensors).</li>
-            <li><b>Plug B (Pin 35):</b> Use for sensors.</li>
-            <li><b>Plug C (Pin 32):</b> Use for sensors.</li>
-            <li><b>Plug D (Pin 14):</b> Use for outputs (LEDs, Buzzers, Servos).</li>
-            <li><b>0.96 OLED LCD:</b> Connect to I2C pins (e.g., SDA Pin 21, SCL Pin 22).</li>
-            <li><b>Ultrasonic:</b> Automatically uses Trigger (Pin 13) and Echo (Pin 12).</li>
+          <p>Switch to the <b>Code</b> tab to program MIGO using snap-together blocks! You can switch between two learning tiers using the mode button at the top:</p>
+          <ul class="list-disc pl-5 mt-2 space-y-1.5">
+            <li><b class="text-teal-300">Explorer Mode:</b> Great for beginners! Uses simple blocks with seconds, friendly sound presets, and easy sensor checks.</li>
+            <li><b class="text-indigo-300">Inventor Mode:</b> Built for young engineers and STEM projects! Unlocks milliseconds (<code>ms</code>), custom ESP32 GPIO pins, raw analog/digital readings, 0.96" OLED screen drawing, I2C communication channels, custom variables, and live C++ code.</li>
+            <li><b>Setup vs. Loop Forever:</b> Blocks inside <b class="text-emerald-300">Setup</b> run <b>once</b> when you press Run. Blocks inside <b class="text-emerald-300">Loop forever</b> repeat over and over until you press Stop.</li>
+            <li><b>Virtual Simulator &amp; C++ Preview:</b> No robot nearby? No problem! Open the <b>Simulator</b> panel in the Code tab to test your blocks on a virtual arena with obstacles, lines, and vision targets, or switch to the <b>C++ Code</b> view to see real Arduino C++ generated live from your blocks!</li>
           </ul>
         </section>
 
-        <section class="border-t border-white/10 pt-4">
-          <h3 class="text-xl font-bold text-white mb-3"><i class="ph-fill ph-book-open text-teal-400"></i> Comprehensive
-            Blocks Guide</h3>
+        <!-- SECTION 3: HARDWARE PLUGS & PINS -->
+        <section id="guideSec_plugs">
+          <h3 class="text-lg font-bold text-white border-b border-white/20 pb-1 mb-2 text-green-300">
+            <i class="ph-bold ph-plug"></i> 3. Hardware Plugs &amp; Inventor Pinouts
+          </h3>
+          <p>To make wiring super easy, MIGO labels its main ports as <b>Plugs A, B, C, and D</b>. In <b>Inventor Mode</b>, you also see the exact ESP32 GPIO pin numbers so you know how the real microcontroller works:</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 text-xs font-mono bg-black/30 p-3 rounded-xl border border-white/10">
+            <div><span class="text-amber-400 font-bold">Plug A (Pin 34):</span> Input Only — Buttons, Knobs, LDR Light, IR Line</div>
+            <div><span class="text-amber-400 font-bold">Plug B (Pin 35):</span> Input Only — Buttons, Knobs, LDR Light, IR Line</div>
+            <div><span class="text-amber-400 font-bold">Plug C (Pin 32):</span> Input OR Output — Sensors, LEDs, Servos, Buzzers</div>
+            <div><span class="text-amber-400 font-bold">Plug D (Pin 14):</span> Output Only — Buzzers, Servos, External LEDs</div>
+            <div><span class="text-teal-300 font-bold">Ultrasonic Eyes:</span> Trig = Pin 13 | Echo = Pin 12 (2cm–400cm)</div>
+            <div><span class="text-teal-300 font-bold">Built-in Blue LED:</span> Pin 2 (Searchlight &amp; Status Light)</div>
+            <div><span class="text-purple-300 font-bold">0.96" OLED &amp; I2C:</span> SDA = Pin 21 | SCL = Pin 22 (Channels 1–6)</div>
+            <div><span class="text-indigo-300 font-bold">Extra Inventor Pins:</span> Pins 4, 16, 17, 18, 19, 23 (Out/In) &amp; 36, 39 (In)</div>
+          </div>
+        </section>
 
-          <div class="space-y-3">
-            <!-- Event Blocks -->
-            <div class="bg-black/30 border border-white/10 p-3 rounded-xl">
-              <h4 class="font-bold text-emerald-400 text-xs uppercase tracking-wide flex items-center gap-1.5 mb-2"><i
-                  class="ph-bold ph-calendar"></i> Events</h4>
-              <ul class="list-disc pl-4 text-xs space-y-2 text-teal-100">
-                <li><b>Setup Block (event_setup):</b> Runs once at the start of your program. Use this to set up pin
-                  configurations, turn on a default light, or initialize variables.</li>
-                <li><b>Loop Forever Block (event_loop):</b> Runs code inside it over and over in an endless cycle.
-                  Perfect for checking sensor values and running motors continuously.</li>
+        <!-- SECTION 4: MIGO VISION & ESP32-CAM -->
+        <section id="guideSec_vision">
+          <h3 class="text-lg font-bold text-white border-b border-white/20 pb-1 mb-2 text-teal-300">
+            <i class="ph-bold ph-camera"></i> 4. MIGO Vision &amp; Easy ESP32-CAM Setup
+          </h3>
+          <p><b>MIGO Vision</b> gives your robot real-time camera sight using either your device's built-in <b>Webcam / Phone Camera</b> or the wireless <b>MIGO ESP32-CAM</b> module!</p>
+          <div class="bg-black/25 p-3.5 rounded-xl border border-teal-500/30 mt-2 space-y-2 text-xs">
+            <h4 class="font-bold text-amber-300 text-sm"><i class="ph-bold ph-wifi-high"></i> Connecting Your ESP32-CAM (Phone, Tablet, or PC):</h4>
+            <ol class="list-decimal pl-5 space-y-1">
+              <li><b>First-Time Wi-Fi Setup:</b> Power on your ESP32-CAM. On your phone or laptop, connect to the Wi-Fi network named <b><code>MIGO_CAM_DIRECT</code></b> (no password).</li>
+              <li><b>Pick Your Home/Hotspot Wi-Fi:</b> A setup screen will pop right up (or tap the <b>Wi-Fi</b> button in MIGO Vision, or visit <code>http://192.168.4.1/wifi</code>). Tap your Wi-Fi network (or your phone's Hotspot), type the password, and tap <b>Save &amp; Connect</b>.</li>
+              <li><b>Copy the Camera IP:</b> Right on that page, the camera will connect and show its new <b>IP Address</b> (like <code>192.168.1.45</code> or <code>192.168.43.120</code>). Tap <b>Copy Camera IP</b>!</li>
+              <li><b>Stream in MIGO Vision:</b> Reconnect your phone/laptop to that same Wi-Fi network, open <b>MIGO Vision</b>, and tap <b>Scan</b> (or paste the IP and tap <b>Connect</b>). Video streaming starts right away!</li>
+              <li><b>Need to Reset the Camera's Wi-Fi?</b> Press the physical <b>RST</b> button on the back of the ESP32-CAM <b>twice within 4 seconds</b> (or use the Forget Wi-Fi button on the <code>/wifi</code> page).</li>
+            </ol>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-5 gap-2 mt-2.5 text-xs">
+            <div class="bg-black/20 p-2.5 rounded-lg border border-white/10"><b class="text-amber-300 block">🎨 Color Tracker</b>Tap any colored object in the video to lock onto its color!</div>
+            <div class="bg-black/20 p-2.5 rounded-lg border border-white/10"><b class="text-teal-300 block">😊 Face AI</b>Detects human faces and can recognize saved friends!</div>
+            <div class="bg-black/20 p-2.5 rounded-lg border border-white/10"><b class="text-purple-300 block">✋ Hand Gestures</b>Counts your raised fingers (0–5) to trigger robot tricks!</div>
+            <div class="bg-black/20 p-2.5 rounded-lg border border-white/10"><b class="text-sky-300 block">📦 Object AI</b>Recognizes 80+ everyday objects (cup, bottle, cat, book).</div>
+            <div class="bg-black/20 p-2.5 rounded-lg border border-white/10"><b class="text-emerald-300 block">🛣️ Line Follower</b>Follows floor lines smoothly using camera sight!</div>
+          </div>
+        </section>
+
+        <!-- SECTION 5: SUPER AIONA AI COMPANION & DESK PET -->
+        <section id="guideSec_aiona">
+          <h3 class="text-lg font-bold text-white border-b border-white/20 pb-1 mb-2 text-purple-300">
+            <i class="ph-bold ph-sparkle"></i> 5. Super AIONA AI Companion &amp; Desk Pet
+          </h3>
+          <p><b>Super AIONA</b> is MIGO's friendly AI brain! Add your free Google Gemini API key in <b>Settings ⚙️</b> to unlock voice conversation, coding help, and visual analysis:</p>
+          <ul class="list-disc pl-5 mt-2 space-y-1">
+            <li><b>Voice &amp; Chat Helper:</b> Tap the <b>Mic 🎤</b> button (or say your wake word, like <i>"Hey MIGO"</i>) to ask AIONA questions, tell MIGO to dance, or ask for help fixing your code blocks!</li>
+            <li><b>Photo Diagnosis 📷:</b> Tap the <b>Paperclip / Photo</b> button in AIONA's chat to snap a picture of a plant, your circuit wiring, or your homework for AIONA to inspect.</li>
+            <li><b>Desk Companion Mode 🐾:</b> Toggle <b>Desk Companion</b> so MIGO acts like a living desk pet—looking around, making eye contact when it sees your face, and chirping happily!</li>
+            <li><b>Red Abort Button 🛑:</b> If AIONA or your code is moving the robot and you want it to stop immediately, tap the red <b>Abort / Stop</b> button anytime.</li>
+          </ul>
+        </section>
+
+        <!-- SECTION 6: COMPREHENSIVE BLOCKS GUIDE -->
+        <section id="guideSec_blocks">
+          <h3 class="text-lg font-bold text-white border-b border-white/20 pb-1 mb-3 text-amber-400">
+            <i class="ph-bold ph-puzzle-piece"></i> 6. Comprehensive Blocks Guide (All Explorer &amp; Inventor Blocks)
+          </h3>
+          <p class="mb-4">Here is every single coding block in MIGO, organized by color category, with what it does and which mode it belongs to:</p>
+
+          <div class="space-y-4">
+
+            <!-- 1. Events -->
+            <div class="bg-black/20 p-3.5 rounded-xl border border-white/10">
+              <h4 class="font-bold text-emerald-400 mb-2 flex items-center gap-1.5"><i class="ph-bold ph-flag-banner"></i> 1. Events (Green)</h4>
+              <ul class="list-disc pl-5 space-y-2 text-xs">
+                <li><strong class="text-white">Setup</strong> <code>(event_setup)</code>: Runs the blocks inside it <b>once</b> right when the program starts. Great for turning on the OLED screen, setting a Vision mode, or running a single mission.</li>
+                <li><strong class="text-white">Loop forever</strong> <code>(event_loop)</code>: Repeats the blocks inside it <b>over and over forever</b> until you press Stop. Essential for checking sensors continuously!</li>
               </ul>
             </div>
 
-            <!-- Movement Blocks -->
-            <div class="bg-black/30 border border-white/10 p-3 rounded-xl">
-              <h4 class="font-bold text-sky-400 text-xs uppercase tracking-wide flex items-center gap-1.5 mb-2"><i
-                  class="ph-bold ph-steering-wheel"></i> Movement &amp; Sound</h4>
-              <ul class="list-disc pl-4 text-xs space-y-2 text-teal-100">
-                <li><b>Move [Dir] at Speed [SPD] (move_robot):</b> Drives MIGO Forward, Backward, Spin Left, or Spin
-                  Right at speed 0 to 255.</li>
-                <li><b>Stop Moving (stop_robot):</b> Cuts off power to the drive motors, stopping MIGO immediately.</li>
-                <li><b>Wait [Time] ms (wait_time):</b> Pauses the program for a specific number of milliseconds (e.g.,
-                  1000 ms is 1 second).</li>
-                <li><b>Play Tone on [Plug] Freq [Hz] for [ms] (buzzer_tone):</b> Plays a sound at a custom frequency (in
-                  Hz) on Plug D or C for a set duration.</li>
-                <li><b>Turn Servo on [Plug] to [Percentage] % (servo_motor):</b> Rotates a servo motor connected to
-                  Plug D or C to a percentage (0% to 100%, corresponding to 45° to 135°).</li>
+            <!-- 2. Movement & Sound -->
+            <div class="bg-black/20 p-3.5 rounded-xl border border-white/10">
+              <h4 class="font-bold text-purple-400 mb-2 flex items-center gap-1.5"><i class="ph-bold ph-steering-wheel"></i> 2. Movement &amp; Sound (Purple / Olive)</h4>
+              <ul class="list-disc pl-5 space-y-2 text-xs">
+                <li><strong class="text-white">Move [Forward / Backward / Left / Right] at speed [0-255]</strong> <code>(move_robot)</code>: Turns on MIGO's wheels in the chosen direction at speeds from 0 (stopped) to 255 (fastest). <i>Remember: MIGO keeps moving until you tell it to Stop or change direction!</i></li>
+                <li><strong class="text-white">Stop Moving</strong> <code>(stop_robot)</code>: Immediately brakes and stops both drive motors.</li>
+                <li><strong class="text-white">Wait [X] seconds</strong> <code>(wait_time_s)</code> <span class="text-teal-300 font-bold">[Explorer Mode]</span>: Pauses your code for <i>X</i> seconds (for example, <code>1.5</code> seconds) before running the next block.</li>
+                <li><strong class="text-white">Wait [X] ms</strong> <code>(wait_time)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Pauses your code for <i>X</i> milliseconds (<code>1000 ms = 1 second</code>) for super accurate timing.</li>
+                <li><strong class="text-white">Beep Buzzer [Sound]</strong> <code>(buzzer_beep_explorer)</code> <span class="text-teal-300 font-bold">[Explorer Mode]</span>: Plays a fun preset sound on Plug D (<i>High Beep, Medium Beep, Low Beep, Happy Chirp, or Siren Sound</i>).</li>
+                <li><strong class="text-white">Turn Arm Servo to [0-100] %</strong> <code>(servo_explorer)</code> <span class="text-teal-300 font-bold">[Explorer Mode]</span>: Moves a servo motor plugged into Plug D from 0% to 100%.</li>
+                <li><strong class="text-white">Play Tone on [Pin] Freq [Hz] for [ms]</strong> <code>(buzzer_tone)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Plays an exact musical frequency (in Hertz) on Plug D (Pin 14), Plug C (Pin 32), or a custom GPIO pin for the chosen milliseconds.</li>
+                <li><strong class="text-white">Set Servo on [Pin] to [0-100] %</strong> <code>(servo_motor)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Rotates a servo motor connected to Plug D (Pin 14), Plug C (Pin 32), or an extra GPIO pin to an exact percentage angle.</li>
               </ul>
             </div>
 
-            <!-- Sensor Blocks -->
-            <div class="bg-black/30 border border-white/10 p-3 rounded-xl">
-              <h4 class="font-bold text-amber-400 text-xs uppercase tracking-wide flex items-center gap-1.5 mb-2"><i
-                  class="ph-bold ph-broadcast"></i> Sensors (Input)</h4>
-              <ul class="list-disc pl-4 text-xs space-y-2 text-teal-100">
-                <li><b>Distance from Ultrasonic (sensor_ultrasonic):</b> Returns the distance to the nearest object in
-                  front of the sensor (in centimeters).</li>
-                <li><b>Is IR Sensor on [Plug] seeing a line? (sensor_ir):</b> Returns true if the infrared sensor on
-                  Plug A, B, or C detects a dark line.</li>
-                <li><b>Is Button on [Plug] pressed? (sensor_button):</b> Returns true if the push button on Plug A, B,
-                  or C is pressed.</li>
-                <li><b>Get Knob Level on [Plug] (sensor_knob):</b> Reads the potentiometer on Plug A, B, or C as a
-                  percentage (0% to 100%).</li>
-                <li><b>Get Light Level on [Plug] (sensor_ldr):</b> Reads the light sensor (LDR) on Plug A, B, or C as a
-                  brightness percentage (0% to 100%).</li>
-                <li><b>Read Digital Value on [Plug] (read_digital):</b> Low-level digital read from Plug A, B, or C
-                  (returns 0 or 1).</li>
-                <li><b>Read Digital on Pin [Variable] (read_digital_var):</b> Read digital value using a declared
-                  variable for the pin.</li>
-                <li><b>Read Analog Value on [Plug] (read_analog):</b> Low-level raw analog read from Plug A, B, or C
-                  (returns 0 to 4095).</li>
-                <li><b>Read Analog on Pin [Variable] (read_analog_var):</b> Read analog value using a declared variable
-                  for the pin.</li>
-                <li><b>HIGH/LOW Level (digital_level):</b> Returns HIGH (1) or LOW (0) for easy logic comparisons.</li>
+            <!-- 3. Vision & AI -->
+            <div class="bg-black/20 p-3.5 rounded-xl border border-white/10">
+              <h4 class="font-bold text-teal-400 mb-2 flex items-center gap-1.5"><i class="ph-bold ph-eye"></i> 3. Vision &amp; AI (Teal)</h4>
+              <ul class="list-disc pl-5 space-y-2 text-xs">
+                <li><strong class="text-white">Set Vision Mode to [Mode]</strong> <code>(vision_set_mode)</code>: Switches the MIGO Vision camera brain to <i>Color Tracker, Face AI, Gesture Control, Object Tracker, Line Follower,</i> or <i>Off</i>.</li>
+                <li><strong class="text-white">Is Vision seeing [Target] ?</strong> <code>(vision_when_sees)</code>: Checks if the camera currently sees a specific target (<i>Any Target, Face, Hand Gesture, Red/Green/Blue/Yellow Color, or Person/Object</i>). Plugs into an <code>If</code> block!</li>
+                <li><strong class="text-white">Is Person [Name] in view?</strong> <code>(vision_is_person)</code>: Returns <code>true</code> if Face AI recognizes a specific person's name that you trained in MIGO Vision!</li>
+                <li><strong class="text-white">Vision Target Locked?</strong> <code>(vision_is_detected)</code>: Returns <code>true</code> whenever the active Vision mode has locked onto a target in the camera view.</li>
+                <li><strong class="text-white">Steer Toward Vision Target at speed [X]</strong> <code>(vision_steer_target)</code>: Automatically steers MIGO left, right, or forward to chase and center the locked camera target!</li>
+                <li><strong class="text-white">Follow Line Step at speed [X]</strong> <code>(vision_line_follow_step)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Runs one smooth camera-guided line-following steering step inside a loop.</li>
+                <li><strong class="text-white">Vision Target X / Y / Area / Error X / Finger Count</strong> <code>(vision_get_prop)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Gives you live numbers from the camera: horizontal position (<code>X</code>), vertical position (<code>Y</code>), target size (<code>AREA</code>), steering offset (<code>ERR_X</code> from -100 to +100), or how many fingers are held up (<code>FINGERS</code> 0–5).</li>
+                <li><strong class="text-white">Vision Detected Label</strong> <code>(vision_get_label)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Returns the text name of what the camera sees (like <code>"person"</code>, <code>"cup"</code>, or a recognized face's name).</li>
               </ul>
             </div>
 
-            <!-- Hardware Output Blocks -->
-            <div class="bg-black/30 border border-white/10 p-3 rounded-xl">
-              <h4 class="font-bold text-fuchsia-400 text-xs uppercase tracking-wide flex items-center gap-1.5 mb-2"><i
-                  class="ph-bold ph-cpu"></i> Hardware Control (Output)</h4>
-              <ul class="list-disc pl-4 text-xs space-y-2 text-teal-100">
-                <li><b>Set [Plug] to [Mode] (setup_pin):</b> Configures Plug A, B, C, or D pin mode as Input (read) or
-                  Output (write).</li>
-                <li><b>Set Pin [Variable] to [Mode] (setup_pin_var):</b> Configures pin mode using a declared variable
-                  for the pin.</li>
-                <li><b>Write Digital [ON/OFF] to [Plug] (digital_write):</b> Outputs High (ON) or Low (OFF) voltage to
-                  Plug D or C.</li>
-                <li><b>Write Digital [ON/OFF] to Pin [Variable] (digital_write_var):</b> Outputs High or Low voltage
-                  using a declared variable for the pin.</li>
-                <li><b>Write Analog [Power] to [Plug] (analog_write):</b> Outputs variable power (PWM 0 to 255) to Plug
-                  D or C.</li>
-                <li><b>Write Analog power to Pin [Variable] (analog_write_var):</b> Outputs PWM power using a declared
-                  variable for the pin.</li>
-                <li><b>Turn Built-in LED [ON/OFF] (control_led):</b> Controls the blue onboard status LED (GPIO Pin 2).
-                </li>
-                <li><b>Init OLED Display SDA [SDA] SCL [SCL] (oled_init):</b> Set up the 0.96 OLED display using SDA and
-                  SCL pins.</li>
-                <li><b>Clear OLED Display (oled_clear):</b> Clears the contents on the OLED screen buffer.</li>
-                <li><b>Print on OLED at X [X] Y [Y] Size [Size]: [Value] (oled_print):</b> Prints a value or message on
-                  the screen at specified X, Y coordinates and font size.</li>
-                <li><b>Show OLED Display (oled_show):</b> Updates the physical screen with the current display buffer
-                  contents.</li>
+            <!-- 4. Sensors (Input) -->
+            <div class="bg-black/20 p-3.5 rounded-xl border border-white/10">
+              <h4 class="font-bold text-amber-400 mb-2 flex items-center gap-1.5"><i class="ph-bold ph-broadcast"></i> 4. Sensors — Input (Amber / Blue)</h4>
+              <ul class="list-disc pl-5 space-y-2 text-xs">
+                <li><strong class="text-white">Distance from Ultrasonic (cm)</strong> <code>(sensor_ultrasonic)</code>: Measures how far away an obstacle is in centimeters (cm) using MIGO's front ultrasonic eyes (Trig Pin 13, Echo Pin 12).</li>
+                <li><strong class="text-white">Is IR Sensor on [Plug] seeing a line?</strong> <code>(sensor_ir)</code>: Returns <code>true</code> if an infrared line sensor on Plug A, B, or C detects a dark line.</li>
+                <li><strong class="text-white">Is Button on [Plug] pressed?</strong> <code>(sensor_button)</code>: Returns <code>true</code> when a pushbutton plugged into Plug A, B, or C is pressed down.</li>
+                <li><strong class="text-white">Get Light Level on [Plug] (0-100%)</strong> <code>(sensor_ldr)</code>: Reads how bright the room is from an LDR light sensor on Plug A, B, or C as a percentage from 0% (dark) to 100% (bright).</li>
+                <li><strong class="text-white">Get Knob Level on [Plug] (0-100%)</strong> <code>(sensor_knob)</code>: Reads the dial position of a potentiometer knob on Plug A, B, or C from 0% to 100%.</li>
+                <li><strong class="text-white">Read Digital on [Pin] (0 or 1)</strong> <code>(sensor_digital_read)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Reads the raw digital state (<code>0</code> = LOW, <code>1</code> = HIGH) of Plug A/B/C or a custom GPIO pin.</li>
+                <li><strong class="text-white">Read Digital on Pin (Variable)</strong> <code>(sensor_digital_read_var)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Reads the digital state (0 or 1) of a pin number stored inside a variable or math block.</li>
+                <li><strong class="text-white">Read Analog on [Pin] (0-4095)</strong> <code>(sensor_analog_read)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Reads the high-precision 12-bit analog voltage value (from <code>0</code> to <code>4095</code>) on Plug A (34), Plug B (35), Plug C (32), Pin 36, or Pin 39.</li>
+                <li><strong class="text-white">Read Analog on Pin (Variable) (0-4095)</strong> <code>(sensor_analog_read_var)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Reads the raw 0–4095 analog value from a pin number supplied by a variable block.</li>
               </ul>
             </div>
 
-            <!-- Logic & Math -->
-            <div class="bg-black/30 border border-white/10 p-3 rounded-xl">
-              <h4 class="font-bold text-pink-400 text-xs uppercase tracking-wide flex items-center gap-1.5 mb-2"><i
-                  class="ph-bold ph-git-fork"></i> Logic &amp; Math</h4>
-              <ul class="list-disc pl-4 text-xs space-y-2 text-teal-100">
-                <li><b>If [Condition] Do (controls_if):</b> Runs internal code only if the condition is true. Click the
-                  gear icon to add else/else-if branches.</li>
-                <li><b>Compare [A] [= / &lt; / &gt;] [B] (logic_compare):</b> Checks if two numbers/values are equal,
-                  unequal, greater, or less.</li>
-                <li><b>Logic [A] [AND / OR] [B] (logic_operation):</b> Combines two logic statements (AND requires both
-                  true; OR requires at least one true).</li>
-                <li><b>Number Input (math_number):</b> Input box to enter numbers.</li>
-                <li><b>Arithmetic [A] [+ / - / * / /] [B] (math_arithmetic):</b> Computes basic math (addition,
-                  subtraction, multiplication, division).</li>
-                <li><b>Text Input (text):</b> Input box to enter text strings.</li>
-                <li><b>Repeat [Times] times (control_repeat):</b> Repeats the blocks inside a specific number of times.
-                </li>
-                <li><b>Repeat until [Condition] (control_repeat_until):</b> Repeats the blocks inside until the boolean
-                  condition evaluates to true.</li>
-                <li><b>Set variable [Name] to [Value] (variable_set):</b> Creates a variable and stores a value inside
-                  it.</li>
-                <li><b>variable [Name] (variable_get):</b> Retrieves the value currently stored in a variable.</li>
-                <li><b>HIGH/LOW Level (digital_level):</b> Returns HIGH (1) or LOW (0) for easy logic comparisons.</li>
+            <!-- 5. Hardware Control & I2C (Output) -->
+            <div class="bg-black/20 p-3.5 rounded-xl border border-white/10">
+              <h4 class="font-bold text-green-400 mb-2 flex items-center gap-1.5"><i class="ph-bold ph-lightbulb"></i> 5. Hardware Control, OLED &amp; I2C (Green / Teal)</h4>
+              <ul class="list-disc pl-5 space-y-2 text-xs">
+                <li><strong class="text-white">Turn Light [ON / OFF]</strong> <code>(control_led_explorer)</code> <span class="text-teal-300 font-bold">[Explorer Mode]</span>: Turns MIGO's built-in blue searchlight LED (Pin 2) ON or OFF.</li>
+                <li><strong class="text-white">Turn Built-in LED (Pin 2) [ON / OFF]</strong> <code>(control_led)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Switches the onboard Pin 2 LED ON (HIGH) or OFF (LOW).</li>
+                <li><strong class="text-white">Set Digital [Pin] to [HIGH / LOW]</strong> <code>(control_digital)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Sends a 3.3V HIGH (ON) or 0V LOW (OFF) digital signal to Plug D (14), Plug C (32), or extra GPIO pins (4, 16, 17, 18, 19, 23).</li>
+                <li><strong class="text-white">Set Digital Pin (Var) [Pin] to [HIGH / LOW]</strong> <code>(control_digital_var)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Sets a digital pin stored in a variable to HIGH or LOW.</li>
+                <li><strong class="text-white">Set PWM (Analog) [Pin] to [0-255]</strong> <code>(control_pwm)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Outputs a smooth Pulse-Width Modulation power level (0 to 255) to dim LEDs or control external motor/actuator speed.</li>
+                <li><strong class="text-white">Set PWM Pin (Var) [Pin] to [0-255]</strong> <code>(control_pwm_var)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Outputs a PWM value (0–255) to a pin number stored in a variable.</li>
+                <li><strong class="text-white">Init 0.96" OLED (SDA:21, SCL:22)</strong> <code>(oled_init)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Wakes up the 128x64 OLED screen at the start of your program. Put this inside <b>Setup</b>!</li>
+                <li><strong class="text-white">Clear OLED Screen</strong> <code>(oled_clear)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Erases the OLED drawing memory so you can write fresh text without overlapping.</li>
+                <li><strong class="text-white">OLED Print [Text] at X:[X] Y:[Y] Size:[1/2/3]</strong> <code>(oled_print)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Places text or sensor numbers at pixel coordinates (X: 0–127, Y: 0–63) on the OLED screen.</li>
+                <li><strong class="text-white">Update (Show) OLED Screen</strong> <code>(oled_show)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Pushes everything you printed onto the physical OLED display so it appears on screen!</li>
+                <li><strong class="text-white">Send I2C (SDA:21, SCL:22) on [Channel 1–6] Value [X]</strong> <code>(i2c_send)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Sends a number or message over the I2C bus (Pins 21 &amp; 22) to an external expansion board or secondary microcontroller on Channels 1–6.</li>
+                <li><strong class="text-white">Read I2C (SDA:21, SCL:22) from [Channel 1–6]</strong> <code>(i2c_read)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Reads back a value from an I2C expansion device on Channels 1–6.</li>
               </ul>
             </div>
 
-            <!-- Functions & Console -->
-            <div class="bg-black/30 border border-white/10 p-3 rounded-xl">
-              <h4 class="font-bold text-indigo-400 text-xs uppercase tracking-wide flex items-center gap-1.5 mb-2"><i
-                  class="ph-bold ph-code"></i> Functions &amp; Console</h4>
-              <ul class="list-disc pl-4 text-xs space-y-2 text-teal-100">
-                <li><b>Define function [Name] (def_func):</b> Combines a group of blocks into a single reusable command.
-                </li>
-                <li><b>Call function [Name] (call_func):</b> Runs the group of blocks defined under that function name.
-                </li>
-                <li><b>Print [Value] to monitor (print_serial):</b> Prints a value or message to the Serial Monitor
-                  console.</li>
+            <!-- 6. Logic, Loops, Math & Variables -->
+            <div class="bg-black/20 p-3.5 rounded-xl border border-white/10">
+              <h4 class="font-bold text-sky-400 mb-2 flex items-center gap-1.5"><i class="ph-bold ph-git-branch"></i> 6. Logic, Loops, Math &amp; Variables (Blue / Purple / Orange)</h4>
+              <ul class="list-disc pl-5 space-y-2 text-xs">
+                <li><strong class="text-white">If / Do / Else</strong> <code>(controls_if)</code>: The brain of decision-making! Checks if a condition is true; if yes, runs the <code>do</code> blocks. Click the blue gear icon to add <code>else if</code> or <code>else</code> branches!</li>
+                <li><strong class="text-white">Comparison [A = B, A &lt; B, A &gt; B]</strong> <code>(logic_compare)</code>: Compares two numbers or sensor readings (for example: <code>Distance from Ultrasonic &lt; 15</code>).</li>
+                <li><strong class="text-white">Logic [AND / OR]</strong> <code>(logic_operation)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Combines two conditions together (both must be true for <code>AND</code>; either can be true for <code>OR</code>).</li>
+                <li><strong class="text-white">Repeat [X] times</strong> <code>(control_repeat)</code>: Runs the blocks inside it a specific number of times.</li>
+                <li><strong class="text-white">Repeat [while / until]</strong> <code>(controls_whileUntil)</code>: Keeps repeating the blocks inside as long as (or until) a sensor condition is true.</li>
+                <li><strong class="text-white">Number [0]</strong> <code>(math_number)</code> &amp; <strong class="text-white">Math [+ - × ÷]</strong> <code>(math_arithmetic)</code>: Lets you type numbers and do addition, subtraction, multiplication, or division.</li>
+                <li><strong class="text-white">Set Variable [name] to [value]</strong> <code>(variable_set)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Saves a number or sensor reading into a named memory box (like <code>speed</code> or <code>pin</code>).</li>
+                <li><strong class="text-white">Get Variable [name]</strong> <code>(variable_get)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Retrieves the value stored inside your named variable.</li>
               </ul>
             </div>
+
+            <!-- 7. Functions & Console -->
+            <div class="bg-black/20 p-3.5 rounded-xl border border-white/10">
+              <h4 class="font-bold text-pink-400 mb-2 flex items-center gap-1.5"><i class="ph-bold ph-MagicWand"></i> 7. Functions &amp; Console (Pink / Brown)</h4>
+              <ul class="list-disc pl-5 space-y-2 text-xs">
+                <li><strong class="text-white">Define function [Name]</strong> <code>(def_func)</code>: Creates your own custom trick or subroutine (like <code>Wink</code> or <code>VictoryDance</code>). Put the blocks for the trick inside it!</li>
+                <li><strong class="text-white">Call function [Name]</strong> <code>(call_func)</code>: Runs the custom function you defined whenever you need it in Setup or Loop.</li>
+                <li><strong class="text-white">Say [Message]</strong> <code>(print_serial_explorer)</code> <span class="text-teal-300 font-bold">[Explorer Mode]</span>: Makes MIGO send a friendly message to your screen's log!</li>
+                <li><strong class="text-white">Print to Monitor [Value]</strong> <code>(print_serial)</code> <span class="text-indigo-300 font-bold">[Inventor Mode]</span>: Prints text, variables, or live sensor numbers to the Serial Monitor log for debugging.</li>
+                <li><strong class="text-white">Text [" "]</strong> <code>(text)</code>: Holds words or sentences to display on the OLED screen or print to the monitor.</li>
+              </ul>
+            </div>
+
           </div>
         </section>
       </div>
@@ -1343,20 +1398,22 @@
 
   <!-- TUTORIALS MODAL -->
   <div id="tutorialModal"
-    class="hidden absolute inset-0 z-[110] flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    class="hidden absolute inset-0 z-[110] flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm p-2 md:p-4">
     <div
-      class="glass-panel bg-amber-900/95 p-0 max-w-4xl w-full h-[85vh] overflow-hidden relative rounded-2xl border-amber-500/50 border-2 shadow-2xl flex flex-col md:flex-row">
+      class="glass-panel bg-amber-950/95 p-0 max-w-5xl w-full h-[90vh] overflow-hidden relative rounded-2xl border-amber-500/50 border-2 shadow-2xl flex flex-col md:flex-row">
       <!-- Close Button -->
       <button onclick="document.getElementById('tutorialModal').classList.add('hidden')"
-        class="absolute top-4 right-4 z-10 bg-red-500 hover:bg-red-600 w-8 h-8 rounded-full font-bold flex items-center justify-center transition-transform active:scale-90 shadow-lg">
+        class="absolute top-4 right-4 z-20 bg-red-500 hover:bg-red-600 w-8 h-8 rounded-full font-bold flex items-center justify-center transition-transform active:scale-90 shadow-lg">
         <i class="ph-bold ph-x text-white"></i>
       </button>
 
       <!-- Mobile Tutorial Navigation (Visible only on mobile) -->
       <div
-        class="block md:hidden bg-black/20 border-b border-white/10 p-3 pt-12 shrink-0 overflow-x-auto whitespace-nowrap">
-        <h4 class="text-amber-400 font-bold uppercase tracking-wider text-[10px] mb-2 px-1">The Caretaker Protocol -
-          Levels</h4>
+        class="block md:hidden bg-black/40 border-b border-white/10 p-3 pt-12 shrink-0 overflow-x-auto whitespace-nowrap scrollbar-none">
+        <div class="flex items-center justify-between mb-2 px-1">
+          <h4 class="text-amber-400 font-bold uppercase tracking-wider text-[10px]">The Caretaker Protocol (Enhanced)</h4>
+          <span class="text-[9px] text-white/50">Levels 0–7</span>
+        </div>
         <div class="flex gap-1.5">
           <button onclick="showTutorial(0)"
             class="tut-nav-btn-mobile px-3 py-1.5 rounded-lg text-xs bg-white/5 hover:bg-white/10 transition-colors font-semibold"
@@ -1376,13 +1433,22 @@
           <button onclick="showTutorial(5)"
             class="tut-nav-btn-mobile px-3 py-1.5 rounded-lg text-xs bg-white/5 hover:bg-white/10 transition-colors font-semibold"
             data-level="5">L5: Harvest</button>
+          <button onclick="showTutorial(6)"
+            class="tut-nav-btn-mobile px-3 py-1.5 rounded-lg text-xs bg-white/5 hover:bg-white/10 transition-colors font-semibold"
+            data-level="6">L6: Vision Eye</button>
+          <button onclick="showTutorial(7)"
+            class="tut-nav-btn-mobile px-3 py-1.5 rounded-lg text-xs bg-white/5 hover:bg-white/10 transition-colors font-semibold"
+            data-level="7">L7: Super AIONA</button>
         </div>
       </div>
 
-      <!-- Tutorial Sidebar -->
-      <aside class="w-1/4 bg-black/20 border-r border-white/10 p-4 overflow-y-auto hidden md:block">
-        <h3 class="text-amber-400 font-bold mb-4 uppercase tracking-widest text-xs">The Caretaker Protocol</h3>
-        <nav class="space-y-2">
+      <!-- Tutorial Sidebar (Desktop) -->
+      <aside class="w-64 bg-black/30 border-r border-white/10 p-4 overflow-y-auto hidden md:flex md:flex-col shrink-0">
+        <h3 class="text-amber-400 font-bold uppercase tracking-wider text-xs mb-1 flex items-center gap-1.5">
+          <i class="ph-bold ph-graduation-cap text-base"></i> The Caretaker Protocol
+        </h3>
+        <p class="text-[10px] text-amber-200/70 mb-3">Story-Driven Robotics for Explorer &amp; Inventor Kids</p>
+        <nav class="space-y-1 flex-grow">
           <button onclick="showTutorial(0)"
             class="tut-nav-btn w-full text-left p-2 rounded-lg text-xs hover:bg-white/10 transition-colors"
             data-level="0">Level 0: The Blueprint</button>
@@ -1391,29 +1457,34 @@
             data-level="1">Level 1: First Steps</button>
           <button onclick="showTutorial(2)"
             class="tut-nav-btn w-full text-left p-2 rounded-lg text-xs hover:bg-white/10 transition-colors"
-            data-level="2">Level 2: Resilience</button>
+            data-level="2">Level 2: Seedling Path</button>
           <button onclick="showTutorial(3)"
             class="tut-nav-btn w-full text-left p-2 rounded-lg text-xs hover:bg-white/10 transition-colors"
-            data-level="3">Level 3: Empathy</button>
+            data-level="3">Level 3: Shaded Grove</button>
           <button onclick="showTutorial(4)"
             class="tut-nav-btn w-full text-left p-2 rounded-lg text-xs hover:bg-white/10 transition-colors"
-            data-level="4">Level 4: Composure</button>
+            data-level="4">Level 4: Drought Response</button>
           <button onclick="showTutorial(5)"
             class="tut-nav-btn w-full text-left p-2 rounded-lg text-xs hover:bg-white/10 transition-colors"
-            data-level="5">Level 5: Harvest</button>
+            data-level="5">Level 5: The Harvest</button>
+          <div class="pt-2 pb-1 px-1 text-[10px] font-bold uppercase tracking-wider text-teal-400/80 border-t border-white/10 mt-2">New v9 Missions</div>
+          <button onclick="showTutorial(6)"
+            class="tut-nav-btn w-full text-left p-2 rounded-lg text-xs hover:bg-white/10 transition-colors flex items-center justify-between"
+            data-level="6"><span>Level 6: Vision Sentinel</span><span class="text-[9px] text-teal-300 font-bold">CAM</span></button>
+          <button onclick="showTutorial(7)"
+            class="tut-nav-btn w-full text-left p-2 rounded-lg text-xs hover:bg-white/10 transition-colors flex items-center justify-between"
+            data-level="7"><span>Level 7: Voice of AIONA</span><span class="text-[9px] text-purple-300 font-bold">AI</span></button>
         </nav>
       </aside>
 
-      <!-- Tutorial Content Area -->
-      <main class="flex-1 p-4 md:p-6 overflow-y-auto bg-gradient-to-br from-amber-900/50 to-transparent">
-        <div id="tutorialContent" class="space-y-6 text-teal-50">
-          <!-- Dynamically filled -->
-        </div>
-      </main>
+      <!-- Tutorial Content -->
+      <div id="tutorialContent" class="flex-1 p-5 md:p-6 overflow-y-auto text-amber-50 space-y-4">
+        <!-- Dynamically filled -->
+      </div>
     </div>
   </div>
 
-  <!-- QUESTS MODAL -->
+<!-- QUESTS MODAL -->
   <div id="questsModal"
     class="hidden absolute inset-0 z-[110] flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm p-4">
     <div
@@ -1829,7 +1900,7 @@
     </div>
 
     <!-- Collapsible Body -->
-    <div id="migoVisionBody" class="flex flex-col p-3 gap-2.5 overflow-y-auto max-h-[84vh]">
+    <div id="migoVisionBody" class="flex flex-col p-2.5 gap-2 overflow-y-auto max-h-[88vh]">
 
       <!-- Video Source Switcher & Connectivity Hub -->
       <div class="flex flex-col gap-1.5 bg-black/35 p-2 rounded-xl border border-white/10 shrink-0 shadow-inner">
@@ -1849,11 +1920,16 @@
         <div id="migoVisionEspRow" class="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 pt-0.5">
           <div
             class="flex-1 flex items-center bg-black/60 rounded-lg px-2.5 py-1.5 border border-white/10 min-w-0 focus-within:border-teal-400/60 transition-all">
-            <span class="text-[10px] text-white/40 font-mono mr-1.5 shrink-0 select-none">ws://</span>
-            <input id="migoVisionIpInput" type="text" value="192.168.4.1" placeholder="IP or migo-cam.local"
+            <span class="text-[10px] text-white/40 font-mono mr-1.5 shrink-0 select-none">IP:</span>
+            <input id="migoVisionIpInput" type="text" value="192.168.4.1" placeholder="Camera IP or migo-cam.local"
               class="bg-transparent text-xs font-mono text-teal-200 focus:outline-none w-full truncate">
           </div>
           <div class="flex items-center gap-1.5 w-full sm:w-auto">
+            <button id="migoVisionWifiPortalBtn" onclick="if(window.migoVision) window.migoVision.openWifiPortal()"
+              class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-teal-300 border border-teal-500/30 text-xs font-bold px-2.5 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1 shrink-0 cursor-pointer shadow-md"
+              title="Open ESP32-CAM Wi-Fi Setup Page (/wifi)">
+              <i class="ph-bold ph-wifi-high text-xs"></i> <span class="hidden md:inline">Wi-Fi</span>
+            </button>
             <button id="migoVisionAutoDetectBtn" onclick="if(window.migoVision) window.migoVision.autoDetectAndConnect()"
               class="flex-1 sm:flex-initial bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer shadow-md"
               title="Scan Wi-Fi network to auto-detect MIGO ESP32-CAM">
@@ -1888,14 +1964,14 @@
 
       <!-- AIONA Desk Companion Hub (Premium Interactive Control Card) -->
       <div id="migoVisionCompanionCard"
-        class="bg-gradient-to-r from-teal-950/70 via-slate-900/80 to-slate-950/80 p-2.5 rounded-2xl border border-teal-500/40 shrink-0 shadow-lg transition-all duration-300">
+        class="bg-gradient-to-r from-teal-950/70 via-slate-900/80 to-slate-950/80 p-2 rounded-2xl border border-teal-500/40 shrink-0 shadow-lg transition-all duration-300">
 
         <!-- Header Row: Title, Mode Indicator & Modern Toggle Switch -->
         <div class="flex items-center justify-between gap-2.5">
-          <div class="flex items-center gap-2.5 min-w-0">
+          <div class="flex items-center gap-2 min-w-0">
             <div id="migoVisionCompanionIconBox"
-              class="w-8 h-8 rounded-xl bg-teal-500/20 border border-teal-400/40 flex items-center justify-center text-teal-300 shadow-sm shrink-0 transition-all">
-              <i class="ph-bold ph-robot text-base"></i>
+              class="w-7 h-7 rounded-xl bg-teal-500/20 border border-teal-400/40 flex items-center justify-center text-teal-300 shadow-sm shrink-0 transition-all">
+              <i class="ph-bold ph-robot text-sm"></i>
             </div>
             <div class="min-w-0">
               <div class="flex items-center gap-1.5 flex-wrap">
@@ -1929,7 +2005,7 @@
 
         <!-- Quick Interaction Bar (Interactive Melodies & Reactions) -->
         <div id="migoVisionCompanionActions"
-          class="mt-2 pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-1.5 text-[9px] transition-all">
+          class="mt-1.5 pt-1.5 border-t border-white/10 flex flex-wrap items-center justify-between gap-1.5 text-[9px] transition-all">
           <span class="text-white/40 text-[8.5px] flex items-center gap-1">
             <i class="ph-bold ph-sparkle text-amber-300"></i> Interactive Test Chimes:
           </span>
@@ -1953,61 +2029,105 @@
         </div>
       </div>
 
-      <!-- Stream Quality & Display Utilities Toolbar (Decluttered from Video Canvas) -->
+      <!-- Stream Quality, Exposure Boost & Display Utilities Toolbar -->
       <div
-        class="flex flex-wrap items-center justify-between gap-1.5 bg-black/35 px-2 py-1 rounded-xl border border-white/10 shrink-0 text-[10px]">
-        <!-- Speed Presets -->
-        <div class="flex items-center gap-1 flex-wrap">
-          <span class="text-white/60 font-semibold flex items-center gap-1 text-[9px]">
-            <i class="ph-bold ph-gauge text-teal-400"></i> Speed:
-          </span>
-          <div class="flex items-center gap-0.5 bg-black/50 p-0.5 rounded-lg border border-white/10">
-            <button id="migoVisionSpeedFastBtn" onclick="if(window.migoVision) window.migoVision.setSpeedPreset('fast')"
-              class="px-1.5 sm:px-2 py-0.5 rounded text-[8.5px] sm:text-[9px] font-semibold text-white/60 hover:text-white transition-all cursor-pointer"
-              title="Fast (30 FPS, Low Latency, QQVGA) - Best for Hand Teleop & Autonomous Driving">
-              ⚡ Fast
+        class="flex flex-col gap-1.5 bg-black/35 px-2.5 py-1.5 rounded-xl border border-white/10 shrink-0 text-[10px]">
+        <!-- Top Row: Speed Presets & Quick Display Icons -->
+        <div class="flex flex-wrap items-center justify-between gap-1.5">
+          <!-- Speed Presets -->
+          <div class="flex items-center gap-1 flex-wrap">
+            <span class="text-white/60 font-semibold flex items-center gap-1 text-[9px]">
+              <i class="ph-bold ph-gauge text-teal-400"></i> Speed:
+            </span>
+            <div class="flex items-center gap-0.5 bg-black/50 p-0.5 rounded-lg border border-white/10">
+              <button id="migoVisionSpeedFastBtn" onclick="if(window.migoVision) window.migoVision.setSpeedPreset('fast')"
+                class="px-1.5 sm:px-2 py-0.5 rounded text-[8.5px] sm:text-[9px] font-semibold text-white/60 hover:text-white transition-all cursor-pointer"
+                title="Fast (30 FPS, Low Latency, QQVGA) - Best for Hand Teleop & Autonomous Driving">
+                ⚡ Fast
+              </button>
+              <button id="migoVisionSpeedBalBtn"
+                onclick="if(window.migoVision) window.migoVision.setSpeedPreset('balanced')"
+                class="px-1.5 sm:px-2 py-0.5 rounded text-[8.5px] sm:text-[9px] font-bold bg-teal-600 text-white shadow-sm transition-all cursor-pointer"
+                title="Balanced (22 FPS, QVGA) - Optimal balance of speed and clarity">
+                ⚖️ Bal
+              </button>
+              <button id="migoVisionSpeedHqBtn" onclick="if(window.migoVision) window.migoVision.setSpeedPreset('hq')"
+                class="px-1.5 sm:px-2 py-0.5 rounded text-[8.5px] sm:text-[9px] font-semibold text-white/60 hover:text-white transition-all cursor-pointer"
+                title="High Quality (12 FPS, VGA) - Sharpest image for inspection & photography">
+                🎨 HQ
+              </button>
+            </div>
+          </div>
+
+          <!-- Stream Display Actions (External to Video Viewport) -->
+          <div class="flex items-center gap-1 ml-auto shrink-0">
+            <!-- Mirror (Horizontal Flip) -->
+            <button id="migoVisionFlipBtn" onclick="if(window.migoVision) window.migoVision.toggleFlipH()"
+              class="w-7 h-7 bg-white/5 hover:bg-white/10 active:scale-95 text-white/70 hover:text-white rounded-lg border border-white/10 flex items-center justify-center cursor-pointer transition-all shadow-sm"
+              title="Mirror Camera Horizontally (Left/Right)" aria-label="Mirror Camera Horizontally">
+              <i id="migoVisionFlipIcon" class="ph-bold ph-arrows-horizontal text-xs text-teal-400"></i>
             </button>
-            <button id="migoVisionSpeedBalBtn"
-              onclick="if(window.migoVision) window.migoVision.setSpeedPreset('balanced')"
-              class="px-1.5 sm:px-2 py-0.5 rounded text-[8.5px] sm:text-[9px] font-bold bg-teal-600 text-white shadow-sm transition-all cursor-pointer"
-              title="Balanced (22 FPS, QVGA) - Optimal balance of speed and clarity">
-              ⚖️ Bal
+            <!-- Flip (Vertical Flip / Upside-Down) -->
+            <button id="migoVisionFlipVBtn" onclick="if(window.migoVision) window.migoVision.toggleFlipV()"
+              class="w-7 h-7 bg-white/5 hover:bg-white/10 active:scale-95 text-white/70 hover:text-white rounded-lg border border-white/10 flex items-center justify-center cursor-pointer transition-all shadow-sm"
+              title="Flip Camera Vertically (Upside-Down)" aria-label="Flip Camera Vertically">
+              <i id="migoVisionFlipVIcon" class="ph-bold ph-arrows-vertical text-xs text-teal-400"></i>
             </button>
-            <button id="migoVisionSpeedHqBtn" onclick="if(window.migoVision) window.migoVision.setSpeedPreset('hq')"
-              class="px-1.5 sm:px-2 py-0.5 rounded text-[8.5px] sm:text-[9px] font-semibold text-white/60 hover:text-white transition-all cursor-pointer"
-              title="High Quality (12 FPS, VGA) - Sharpest image for inspection & photography">
-              🎨 HQ
+            <!-- Front / Back Camera Switch (for Phone/Tablet) -->
+            <button id="migoVisionSwitchCamBtn" onclick="if(window.migoVision) window.migoVision.switchCamera()"
+              class="w-7 h-7 bg-white/5 hover:bg-white/10 active:scale-95 text-white/70 hover:text-white rounded-lg border border-white/10 flex items-center justify-center cursor-pointer transition-all shadow-sm"
+              title="Switch between Front and Back Camera" aria-label="Switch Camera">
+              <i id="migoVisionCamIcon" class="ph-bold ph-camera-rotate text-xs text-amber-400"></i>
+            </button>
+            <!-- Flashlight / Torch Toggle -->
+            <button id="migoVisionFlashBtn" onclick="if(window.migoVision) window.migoVision.toggleFlash()"
+              class="w-7 h-7 bg-white/5 hover:bg-white/10 active:scale-95 text-white/70 hover:text-white rounded-lg border border-white/10 flex items-center justify-center cursor-pointer transition-all shadow-sm"
+              title="Toggle Flashlight / Lamp" aria-label="Toggle Flashlight">
+              <i id="migoVisionFlashIcon" class="ph-bold ph-flashlight text-xs text-amber-400"></i>
+            </button>
+            <!-- Video / Telemetry Toggle -->
+            <button id="migoVisionMonitorToggleBtn" onclick="if(window.migoVision) window.migoVision.toggleMonitor()"
+              class="w-7 h-7 bg-teal-950/60 hover:bg-teal-900/80 active:scale-95 text-teal-300 rounded-lg border border-teal-500/30 flex items-center justify-center cursor-pointer transition-all shadow-sm"
+              title="Toggle Video Stream / Telemetry HUD" aria-label="Toggle Video Stream or Telemetry HUD">
+              <i id="migoVisionMonitorIcon" class="ph-bold ph-eye text-xs text-teal-400"></i>
             </button>
           </div>
         </div>
 
-        <!-- Stream Display Actions (External to Video Viewport) -->
-        <div class="flex items-center gap-1 flex-wrap ml-auto">
-          <button id="migoVisionFlipBtn" onclick="if(window.migoVision) window.migoVision.toggleFlipH()"
-            class="bg-white/5 hover:bg-white/10 active:scale-95 text-white/80 hover:text-white px-2 py-1 rounded-lg border border-white/10 text-[9px] font-semibold flex items-center gap-1 cursor-pointer transition-all"
-            title="Mirror / Flip Video Feed (fixes left/right hand direction)">
-            <i class="ph-bold ph-arrows-horizontal text-teal-400 text-xs"></i>
-            <span id="migoVisionFlipLabel">Mirror</span>
+        <!-- Bottom Row: Canvas Brightness / Contrast & Auto Low-Light Night Boost -->
+        <div class="flex items-center justify-between gap-2 pt-1 border-t border-white/10">
+          <!-- Auto Low-Light HDR / Night Vision Toggle Pill -->
+          <button id="migoVisionNightBoostBtn" onclick="if(window.migoVision) window.migoVision.toggleLowLightBoost()"
+            class="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/50 text-[9px] font-bold flex items-center gap-1 shrink-0 cursor-pointer transition-all shadow-sm"
+            title="Auto Low-Light Shadow-Lift & Contrast Boost (Brightens dark indoor camera feeds for both you & AI models)">
+            <i id="migoVisionNightBoostIcon" class="ph-fill ph-sun-horizon text-xs text-amber-400"></i>
+            <span id="migoVisionNightBoostLabel">Night Boost: ON</span>
           </button>
-          <button id="migoVisionSwitchCamBtn" onclick="if(window.migoVision) window.migoVision.switchCamera()"
-            class="bg-white/5 hover:bg-white/10 active:scale-95 text-white/80 hover:text-white px-2 py-1 rounded-lg border border-white/10 text-[9px] font-semibold flex items-center gap-1 cursor-pointer transition-all"
-            title="Switch between Smartphone Front and Back Camera">
-            <i class="ph-bold ph-camera-rotate text-amber-400 text-xs"></i>
-            <span id="migoVisionCamLabel">Front</span>
-          </button>
-          <button id="migoVisionMonitorToggleBtn" onclick="if(window.migoVision) window.migoVision.toggleMonitor()"
-            class="bg-teal-950/60 hover:bg-teal-900/80 active:scale-95 text-teal-300 px-2 py-1 rounded-lg border border-teal-500/30 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-sm"
-            title="Toggle between Video Stream and Headless Telemetry HUD (saves ~95% bandwidth)">
-            <i id="migoVisionMonitorIcon" class="ph-bold ph-eye text-teal-400 text-xs"></i>
-            <span id="migoVisionMonitorLabel">Video</span>
+
+          <!-- Brightness Boost Slider -->
+          <div class="flex-1 flex items-center gap-1.5 min-w-0 bg-black/45 px-2 py-1 rounded-lg border border-white/10">
+            <i class="ph-bold ph-sun text-amber-400 text-xs shrink-0" title="Canvas Brightness & Gain Boost"></i>
+            <input id="migoVisionBrightnessSlider" type="range" min="60" max="260" step="5" value="155"
+              oninput="if(window.migoVision) window.migoVision.setBrightnessBoost(this.value)"
+              class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400"
+              title="Adjust Live Stream Brightness & Contrast Boost (60% - 260%)">
+            <span id="migoVisionBrightnessVal"
+              class="text-[9px] font-mono font-bold text-amber-300 min-w-[32px] text-right select-none">155%</span>
+          </div>
+
+          <!-- 1-Click Reset Exposure -->
+          <button onclick="if(window.migoVision) window.migoVision.resetExposureBoost()"
+            class="w-6 h-6 bg-white/5 hover:bg-white/15 active:scale-95 text-white/60 hover:text-white rounded-lg border border-white/10 flex items-center justify-center shrink-0 cursor-pointer transition-all"
+            title="Reset Brightness & Night Boost to optimal indoor defaults (155% + Night Boost ON)">
+            <i class="ph-bold ph-arrow-counter-clockwise text-[10px]"></i>
           </button>
         </div>
       </div>
 
-      <!-- Live Stream Viewport & Interactive Canvas (EXPANDED HERO VIEWPORT) -->
+      <!-- Live Stream Viewport & Interactive Canvas (FULL-WIDTH 4:3 EDGE-TO-EDGE HERO VIEWPORT - NEVER NARROW) -->
       <div
-        class="relative w-full aspect-[4/3] bg-black/95 rounded-xl overflow-hidden border border-white/15 shadow-inner flex items-center justify-center select-none min-h-[190px] xs:min-h-[220px] sm:min-h-[290px] md:min-h-[330px]">
-        <canvas id="migoVisionCanvas" width="320" height="240" class="w-full h-full object-contain cursor-crosshair"
+        class="relative w-full aspect-[4/3] shrink-0 bg-black/95 rounded-xl overflow-hidden border border-white/15 shadow-inner flex items-center justify-center select-none">
+        <canvas id="migoVisionCanvas" width="320" height="240" class="w-full h-full block cursor-crosshair"
           onclick="if(window.migoVision) window.migoVision.handleCanvasClick(event)"
           title="Click stream to sample target color"></canvas>
 
@@ -2126,7 +2246,7 @@
 
       <!-- Color Tracker Settings (Shown when COLOR mode active) -->
       <div id="migoVisionColorControls"
-        class="hidden flex-col gap-2 bg-black/25 p-2.5 rounded-xl border border-white/10">
+        class="hidden flex-col gap-2 bg-black/25 p-2.5 rounded-xl border border-white/10 shrink-0">
         <div class="flex items-center justify-between">
           <span class="text-[9px] text-teal-300 font-bold uppercase tracking-wider">Target Preset</span>
           <span class="text-[8px] text-white/40">Tap stream to sample</span>
@@ -2400,7 +2520,7 @@
             title="Tutorials">
             <i class="ph-bold ph-sparkle text-sm"></i>
           </button>
-          <button onclick="document.getElementById('guideModal').classList.remove('hidden')"
+          <button onclick="openGuide()"
             class="text-white/60 hover:text-white transition-colors flex items-center justify-center w-7 h-7 rounded-full border-2 border-current shrink-0"
             title="User Guide">
             <i class="ph-bold ph-question text-sm"></i>
@@ -3546,10 +3666,23 @@
         this.lineBaseSpeed = 140;
         this.lineOffset = 0;
         this.lastLineDispatchTime = 0;
+        this.lastTrackedLineX = undefined;
+        this.lineMissedFrames = 0;
 
         // Camera Mirroring & Phone Camera Orientation State
         this.isFlippedH = localStorage.getItem('migoVisionFlipH') !== null ? (localStorage.getItem('migoVisionFlipH') === 'true') : true;
+        this.isFlippedV = localStorage.getItem('migoVisionFlipV') !== null ? (localStorage.getItem('migoVisionFlipV') === 'true') : false;
         this.facingMode = localStorage.getItem('migoVisionFacingMode') || 'user';
+        this.isFlashOn = false;
+
+        // Canvas Brightness / Contrast & Adaptive Low-Light Night Boost State
+        this.lowLightBoost = localStorage.getItem('migoVisionLowLightBoost') !== null ? (localStorage.getItem('migoVisionLowLightBoost') === 'true') : true;
+        const savedBright = parseInt(localStorage.getItem('migoVisionBrightnessBoost') || '155', 10);
+        this.brightnessBoost = (!isNaN(savedBright) && savedBright >= 60 && savedBright <= 260) ? savedBright : 155;
+        this.exposureLut = new Uint8Array(256);
+        this.lastLutKey = '';
+        this.smoothSceneLuma = 75;
+        this.lastHwExposureSync = 0;
 
         // Stream Performance & Headless Telemetry HUD State
         this.speedPreset = localStorage.getItem('migoVisionSpeedPreset') || 'balanced';
@@ -3604,14 +3737,207 @@
         }
         if (compIconBox) {
           compIconBox.className = this.deskCompanionActive
-            ? 'w-8 h-8 rounded-xl bg-teal-500/20 border border-teal-400/40 flex items-center justify-center text-teal-300 shadow-sm shrink-0 transition-all'
-            : 'w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/40 shadow-sm shrink-0 transition-all';
+            ? 'w-7 h-7 rounded-xl bg-teal-500/20 border border-teal-400/40 flex items-center justify-center text-teal-300 shadow-sm shrink-0 transition-all'
+            : 'w-7 h-7 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/40 shadow-sm shrink-0 transition-all';
         }
         this.checkAICacheStatus();
         this.updateFlipUI();
+        this.updateFlashUI();
         this.updateCameraUI();
         this.updateSpeedPresetUI();
         this.updateMonitorUI();
+        this.updateExposureUI();
+      }
+
+      toggleLowLightBoost() {
+        this.lowLightBoost = !this.lowLightBoost;
+        localStorage.setItem('migoVisionLowLightBoost', this.lowLightBoost.toString());
+        this.updateExposureUI();
+        this.syncHardwareExposure();
+        this.logTelemetry('EXPOSURE', `Auto Low-Light Night Boost ${this.lowLightBoost ? 'ENABLED (Adaptive Shadow-Lift Gamma LUT)' : 'OFF'}`, 'info');
+        if (typeof showMigoToast === 'function') {
+          showMigoToast(this.lowLightBoost ? '☀️ Night Boost ON: Dark shadows lifted for you & AI models' : '☀️ Night Boost OFF (Manual Brightness Only)', 'info');
+        }
+      }
+
+      setBrightnessBoost(val) {
+        const parsed = parseInt(val, 10);
+        if (isNaN(parsed)) return;
+        this.brightnessBoost = Math.max(60, Math.min(260, parsed));
+        localStorage.setItem('migoVisionBrightnessBoost', String(this.brightnessBoost));
+        this.updateExposureUI();
+        const now = performance.now();
+        if (now - this.lastHwExposureSync > 350) {
+          this.lastHwExposureSync = now;
+          this.syncHardwareExposure();
+        }
+      }
+
+      resetExposureBoost() {
+        this.lowLightBoost = true;
+        this.brightnessBoost = 155;
+        localStorage.setItem('migoVisionLowLightBoost', 'true');
+        localStorage.setItem('migoVisionBrightnessBoost', '155');
+        this.updateExposureUI();
+        this.syncHardwareExposure();
+        if (typeof showMigoToast === 'function') {
+          showMigoToast('☀️ Exposure reset to optimal indoor boost (155% + Night Boost ON)', 'info');
+        }
+      }
+
+      updateExposureUI() {
+        const nightBtn = document.getElementById('migoVisionNightBoostBtn');
+        const nightIcon = document.getElementById('migoVisionNightBoostIcon');
+        const nightLabel = document.getElementById('migoVisionNightBoostLabel');
+        const slider = document.getElementById('migoVisionBrightnessSlider');
+        const valEl = document.getElementById('migoVisionBrightnessVal');
+
+        if (slider && Number(slider.value) !== this.brightnessBoost) {
+          slider.value = String(this.brightnessBoost);
+        }
+        if (valEl) {
+          valEl.innerText = `${this.brightnessBoost}%`;
+          valEl.className = this.brightnessBoost > 105
+            ? 'text-[9px] font-mono font-bold text-amber-300 min-w-[32px] text-right select-none'
+            : 'text-[9px] font-mono font-bold text-white/70 min-w-[32px] text-right select-none';
+        }
+        if (nightBtn) {
+          if (this.lowLightBoost) {
+            nightBtn.className = 'px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/50 text-[9px] font-bold flex items-center gap-1 shrink-0 cursor-pointer transition-all shadow-sm';
+            if (nightIcon) nightIcon.className = 'ph-fill ph-sun-horizon text-xs text-amber-400';
+            if (nightLabel) nightLabel.innerText = 'Night Boost: ON';
+          } else {
+            nightBtn.className = 'px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/10 text-[9px] font-semibold flex items-center gap-1 shrink-0 cursor-pointer transition-all';
+            if (nightIcon) nightIcon.className = 'ph-bold ph-sun-horizon text-xs text-white/50';
+            if (nightLabel) nightLabel.innerText = 'Night Boost: OFF';
+          }
+        }
+      }
+
+      syncHardwareExposure(hostOverride) {
+        if (this.source !== 'esp32') return;
+        const rawHost = hostOverride || this.camIp;
+        if (!rawHost) return;
+        const cleanHost = rawHost.replace(/^https?:\/\//i, '').replace(/^ws:\/\//i, '').replace(/\/.*$/, '').trim();
+        if (!cleanHost) return;
+        const hwBright = (this.lowLightBoost || this.brightnessBoost >= 135) ? 2 : (this.brightnessBoost >= 110 ? 1 : 0);
+        const hwAe = (this.lowLightBoost || this.brightnessBoost >= 125) ? 2 : 1;
+        fetch(`http://${cleanHost}/cam-config?brightness=${hwBright}&ae_level=${hwAe}&gainceiling=64x&contrast=1`, { mode: 'no-cors' }).catch(() => { });
+      }
+
+      renderSourceToCanvas(source, srcW, srcH) {
+        if (!this.canvas || !this.ctx || !source) return;
+        // Enforce a true 4:3 internal resolution (320x240 or 640x480) so the stream fills 100% of the 4:3 viewport edge-to-edge and NEVER becomes narrow!
+        const targetW = (srcW >= 600) ? 640 : 320;
+        const targetH = (srcW >= 600) ? 480 : 240;
+        if (this.canvas.width !== targetW || this.canvas.height !== targetH) {
+          this.canvas.width = targetW;
+          this.canvas.height = targetH;
+        }
+
+        const cW = this.canvas.width;
+        const cH = this.canvas.height;
+
+        this.ctx.save();
+        const sx = this.isFlippedH ? -1 : 1;
+        const sy = this.isFlippedV ? -1 : 1;
+        const tx = this.isFlippedH ? cW : 0;
+        const ty = this.isFlippedV ? cH : 0;
+        if (this.isFlippedH || this.isFlippedV) {
+          this.ctx.translate(tx, ty);
+          this.ctx.scale(sx, sy);
+        }
+        this.ctx.drawImage(source, 0, 0, cW, cH);
+        this.ctx.restore();
+
+        // Apply pixel-level Canvas Brightness / Contrast & Adaptive Low-Light Shadow-Lift Gamma Boost
+        // This brightens the actual canvas ImageData BEFORE AI inference so Handpose, BlazeFace, COCO-SSD, Color, and Line trackers see clearly in dark rooms!
+        if (this.lowLightBoost || this.brightnessBoost !== 100) {
+          this.applyExposureBoostPixels(cW, cH);
+        }
+      }
+
+      applyExposureBoostPixels(cW, cH) {
+        try {
+          const imgData = this.ctx.getImageData(0, 0, cW, cH);
+          const data = imgData.data;
+          const len = data.length;
+
+          // Step 1: Fast sparse luminance & black-floor sampling (every 32nd pixel = ~120ns)
+          let lumaSum = 0;
+          let minLuma = 255;
+          let maxLuma = 0;
+          let samples = 0;
+          const stride = 128; // 32 pixels * 4 RGBA bytes
+          for (let i = 0; i < len; i += stride) {
+            const y = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8;
+            lumaSum += y;
+            if (y < minLuma) minLuma = y;
+            if (y > maxLuma) maxLuma = y;
+            samples++;
+          }
+          const rawAvgLuma = samples > 0 ? (lumaSum / samples) : 80;
+          this.smoothSceneLuma = 0.82 * this.smoothSceneLuma + 0.18 * rawAvgLuma;
+
+          // Step 2: Determine adaptive shadow-lift gamma, gain, and contrast
+          const userGain = this.brightnessBoost / 100.0;
+          let gamma = 1.0;
+          let contrast = 1.0 + Math.max(0, (userGain - 1.0) * 0.22);
+          let blackFloor = 0;
+          let autoGain = 1.0;
+
+          if (this.lowLightBoost) {
+            // Dynamically lift dark ESP32-CAM indoor shadows (e.g., avg luma 25..75 -> gamma 0.42..0.68)
+            const darkness = Math.max(0, Math.min(1, (115 - this.smoothSceneLuma) / 90));
+            gamma = 0.82 - (darkness * 0.38); // Reaches 0.44 in very dark feeds like the hand screenshot
+            autoGain = 1.0 + (darkness * 0.38);
+            contrast = Math.max(contrast, 1.16 + darkness * 0.16);
+            // Subtract dark sensor haze floor slightly so lifted shadows stay crisp rather than milky grey
+            blackFloor = Math.min(18, Math.max(0, Math.round(minLuma * 0.45)));
+          }
+
+          const totalGain = userGain * autoGain;
+          const qGamma = Math.round(gamma * 100);
+          const qGain = Math.round(totalGain * 100);
+          const qContrast = Math.round(contrast * 100);
+          const lutKey = `${qGamma}_${qGain}_${qContrast}_${blackFloor}`;
+
+          if (lutKey !== this.lastLutKey) {
+            this.lastLutKey = lutKey;
+            const lut = this.exposureLut;
+            const invRange = 1.0 / Math.max(1, 255 - blackFloor);
+            const invGamma = 1.0 / Math.max(0.25, gamma);
+            for (let v = 0; v < 256; v++) {
+              // 1) Normalize above black floor
+              const norm = Math.max(0, (v - blackFloor) * invRange);
+              // 2) Non-linear shadow-lifting gamma curve (lifts dark midtones/shadows strongly without blowing out highlights)
+              const lifted = Math.pow(norm, gamma);
+              // 3) Apply user + adaptive brightness gain
+              let val = lifted * 255.0 * totalGain;
+              // 4) Apply S-curve / midtone contrast around pivot 128
+              val = (val - 128.0) * contrast + 128.0;
+              // 5) Soft-knee highlight roll-off above 235 to preserve skin/object detail
+              if (val > 235.0) {
+                val = 235.0 + 20.0 * Math.tanh((val - 235.0) / 35.0);
+              }
+              lut[v] = val < 0 ? 0 : (val > 255 ? 255 : (val | 0));
+            }
+            // Unused variable guard
+            void invGamma;
+          }
+
+          // Step 3: Apply 256-entry LUT across all pixels in < 0.3ms
+          const lut = this.exposureLut;
+          for (let i = 0; i < len; i += 4) {
+            data[i] = lut[data[i]];
+            data[i + 1] = lut[data[i + 1]];
+            data[i + 2] = lut[data[i + 2]];
+          }
+
+          this.ctx.putImageData(imgData, 0, 0);
+        } catch (e) {
+          // Ignore tainted canvas or transient frame errors
+        }
       }
 
       toggleFlipH() {
@@ -3619,20 +3945,113 @@
         localStorage.setItem('migoVisionFlipH', this.isFlippedH.toString());
         this.updateFlipUI();
         if (typeof showMigoToast === 'function') {
-          showMigoToast(this.isFlippedH ? 'Camera Mirrored (Flipped)' : 'Camera Normal (Unflipped)', 'info');
+          showMigoToast(this.isFlippedH ? '↔️ Camera Mirrored (Horizontal)' : '↔️ Camera Normal (Unmirrored)', 'info');
+        }
+      }
+
+      toggleFlipV() {
+        this.isFlippedV = !this.isFlippedV;
+        localStorage.setItem('migoVisionFlipV', this.isFlippedV.toString());
+        this.updateFlipUI();
+        if (typeof showMigoToast === 'function') {
+          showMigoToast(this.isFlippedV ? '↕️ Camera Upside-Down (Flipped Vertically)' : '↕️ Camera Upright (Normal)', 'info');
         }
       }
 
       updateFlipUI() {
-        const btn = document.getElementById('migoVisionFlipBtn');
-        const label = document.getElementById('migoVisionFlipLabel');
-        if (btn) {
+        const hBtn = document.getElementById('migoVisionFlipBtn');
+        const hIcon = document.getElementById('migoVisionFlipIcon');
+        const hLabel = document.getElementById('migoVisionFlipLabel');
+        if (hBtn) {
           if (this.isFlippedH) {
-            btn.className = 'bg-teal-600/80 hover:bg-teal-500 active:scale-95 text-white backdrop-blur-md px-2 py-1 rounded-md border border-teal-400/40 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-sm';
-            if (label) label.innerText = 'Mirrored';
+            hBtn.className = 'w-7 h-7 bg-teal-600/90 hover:bg-teal-500 active:scale-95 text-white backdrop-blur-md rounded-lg border border-teal-400/50 flex items-center justify-center cursor-pointer transition-all shadow-sm';
+            hBtn.title = 'Mirror Camera Horizontally: ACTIVE (Mirrored)';
+            if (hIcon) hIcon.className = 'ph-bold ph-arrows-horizontal text-xs text-white';
+            if (hLabel) hLabel.innerText = 'Mirrored';
           } else {
-            btn.className = 'bg-black/60 hover:bg-black/80 active:scale-95 text-white/70 hover:text-white backdrop-blur-md px-2 py-1 rounded-md border border-white/15 text-[9px] font-semibold flex items-center gap-1 cursor-pointer transition-all shadow-sm';
-            if (label) label.innerText = 'Normal';
+            hBtn.className = 'w-7 h-7 bg-white/5 hover:bg-white/10 active:scale-95 text-white/70 hover:text-white backdrop-blur-md rounded-lg border border-white/10 flex items-center justify-center cursor-pointer transition-all shadow-sm';
+            hBtn.title = 'Mirror Camera Horizontally: OFF (Normal)';
+            if (hIcon) hIcon.className = 'ph-bold ph-arrows-horizontal text-xs text-teal-400';
+            if (hLabel) hLabel.innerText = 'Normal';
+          }
+        }
+
+        const vBtn = document.getElementById('migoVisionFlipVBtn');
+        const vIcon = document.getElementById('migoVisionFlipVIcon');
+        if (vBtn) {
+          if (this.isFlippedV) {
+            vBtn.className = 'w-7 h-7 bg-teal-600/90 hover:bg-teal-500 active:scale-95 text-white backdrop-blur-md rounded-lg border border-teal-400/50 flex items-center justify-center cursor-pointer transition-all shadow-sm';
+            vBtn.title = 'Flip Camera Vertically: ACTIVE (Upside-Down)';
+            if (vIcon) vIcon.className = 'ph-bold ph-arrows-vertical text-xs text-white';
+          } else {
+            vBtn.className = 'w-7 h-7 bg-white/5 hover:bg-white/10 active:scale-95 text-white/70 hover:text-white backdrop-blur-md rounded-lg border border-white/10 flex items-center justify-center cursor-pointer transition-all shadow-sm';
+            vBtn.title = 'Flip Camera Vertically: OFF (Upright)';
+            if (vIcon) vIcon.className = 'ph-bold ph-arrows-vertical text-xs text-teal-400';
+          }
+        }
+      }
+
+      async toggleFlash() {
+        this.isFlashOn = !this.isFlashOn;
+        this.updateFlashUI();
+
+        if (this.source === 'esp32') {
+          // ESP32-CAM Hardware Flashlight (GPIO 4 High-Power White LED)
+          const cmd = this.isFlashOn ? 'FLASH:ON' : 'FLASH:OFF';
+          this.sendWsCommand(cmd);
+          if (this.camIp) {
+            const cleanHost = this.camIp.replace(/^https?:\/\//i, '').replace(/^ws:\/\//i, '').replace(/\/.*$/, '').trim();
+            fetch(`http://${cleanHost}/flash?val=${this.isFlashOn ? '1' : '0'}`, { mode: 'no-cors' }).catch(() => { });
+            fetch(`http://${cleanHost}/cam-config?flash=${this.isFlashOn ? '1' : '0'}`, { mode: 'no-cors' }).catch(() => { });
+          }
+          this.logTelemetry('FLASH', `ESP32-CAM Flashlight ${this.isFlashOn ? 'ACTIVE (GPIO 4)' : 'OFF'}`, 'info');
+          if (typeof showMigoToast === 'function') {
+            showMigoToast(this.isFlashOn ? '🔦 ESP32-CAM Flashlight ON' : '💡 Flashlight OFF', 'info');
+          }
+        } else if (this.source === 'webcam') {
+          // Local Smartphone Torch constraint
+          let torchApplied = false;
+          try {
+            if (this.webcamVideo && this.webcamVideo.srcObject) {
+              const tracks = this.webcamVideo.srcObject.getVideoTracks();
+              if (tracks && tracks.length > 0) {
+                const track = tracks[0];
+                await track.applyConstraints({ advanced: [{ torch: this.isFlashOn }] });
+                torchApplied = true;
+              }
+            }
+          } catch (e) {
+            console.warn('[MIGO Vision] Torch constraint error:', e);
+          }
+
+          if (torchApplied) {
+            this.logTelemetry('FLASH', `Smartphone Torch ${this.isFlashOn ? 'ON' : 'OFF'}`, 'info');
+            if (typeof showMigoToast === 'function') {
+              showMigoToast(this.isFlashOn ? '🔦 Smartphone Torch ON' : '💡 Torch OFF', 'info');
+            }
+          } else {
+            if (typeof showMigoToast === 'function') {
+              showMigoToast(this.isFlashOn ? '🔦 Flash toggled ON (Hardware torch not supported on this camera)' : '💡 Flashlight OFF', 'info');
+            }
+          }
+        }
+      }
+
+      updateFlashUI() {
+        const btn = document.getElementById('migoVisionFlashBtn');
+        const icon = document.getElementById('migoVisionFlashIcon');
+        const label = document.getElementById('migoVisionFlashLabel');
+        if (btn) {
+          if (this.isFlashOn) {
+            btn.className = 'w-7 h-7 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 rounded-lg border border-amber-300 flex items-center justify-center cursor-pointer transition-all shadow-[0_0_12px_rgba(245,158,11,0.6)]';
+            btn.title = 'Flashlight: ON (Click to turn OFF)';
+            if (icon) icon.className = 'ph-fill ph-flashlight text-xs text-slate-950 animate-pulse';
+            if (label) label.innerText = 'Flash ON';
+          } else {
+            btn.className = 'w-7 h-7 bg-white/5 hover:bg-white/10 active:scale-95 text-white/70 hover:text-white rounded-lg border border-white/10 flex items-center justify-center cursor-pointer transition-all shadow-sm';
+            btn.title = 'Flashlight: OFF (Click to turn ON)';
+            if (icon) icon.className = 'ph-bold ph-flashlight text-amber-400 text-xs';
+            if (label) label.innerText = 'Flash';
           }
         }
       }
@@ -3682,23 +4101,20 @@
         localStorage.setItem('migoVisionMonitorMuted', this.isMonitorMuted.toString());
         this.updateMonitorUI();
 
+        // Ensure ESP32-CAM stream stays active in both Video and Telemetry modes so AI models never go blind!
+        this.sendWsCommand('STREAM:RESUME');
+        if (this.source === 'esp32' && this.camIp) {
+          const cleanHost = this.camIp.replace(/^https?:\/\//i, '').replace(/^ws:\/\//i, '').replace(/\/.*$/, '').trim();
+          fetch(`http://${cleanHost}/cam-config?stream=resume`, { mode: 'no-cors' }).catch(() => { });
+        }
+
         if (this.isMonitorMuted) {
-          this.sendWsCommand('STREAM:MUTE');
-          if (this.source === 'esp32' && this.camIp) {
-            const cleanHost = this.camIp.replace(/^https?:\/\//i, '').replace(/^ws:\/\//i, '').replace(/\/.*$/, '').trim();
-            fetch(`http://${cleanHost}/cam-config?stream=mute`, { mode: 'no-cors' }).catch(() => { });
-          }
-          this.logTelemetry('MONITOR', 'Video stream muted (Headless Mode). Bandwidth & GPU load saved.', 'warn');
+          this.logTelemetry('MONITOR', 'Telemetry HUD Active. Background AI perception & tracking remain 100% online.', 'info');
           if (typeof showMigoToast === 'function') {
-            showMigoToast('📟 Stream Monitor: Telemetry HUD Mode (Muted)', 'warning');
+            showMigoToast('📟 Telemetry HUD Active (AI Vision still running in background)', 'info');
           }
         } else {
-          this.sendWsCommand('STREAM:RESUME');
-          if (this.source === 'esp32' && this.camIp) {
-            const cleanHost = this.camIp.replace(/^https?:\/\//i, '').replace(/^ws:\/\//i, '').replace(/\/.*$/, '').trim();
-            fetch(`http://${cleanHost}/cam-config?stream=resume`, { mode: 'no-cors' }).catch(() => { });
-          }
-          this.logTelemetry('MONITOR', 'Video stream resumed. Canvas rendering active.', 'success');
+          this.logTelemetry('MONITOR', 'Live Video Monitor restored.', 'success');
           if (typeof showMigoToast === 'function') {
             showMigoToast('📺 Stream Monitor: Video Feed Active', 'info');
           }
@@ -3716,7 +4132,8 @@
           if (canvas) canvas.classList.add('hidden');
           if (serialHUD) serialHUD.classList.remove('hidden');
           if (btn) {
-            btn.className = 'bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-300 px-2 py-1 rounded-lg border border-amber-500/50 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-sm';
+            btn.className = 'w-7 h-7 bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-300 rounded-lg border border-amber-500/50 flex items-center justify-center cursor-pointer transition-all shadow-sm';
+            btn.title = 'Mode: Telemetry HUD (Click to switch to Video Stream)';
           }
           if (icon) {
             icon.className = 'ph-bold ph-terminal-window text-xs text-amber-400';
@@ -3726,7 +4143,8 @@
           if (canvas) canvas.classList.remove('hidden');
           if (serialHUD) serialHUD.classList.add('hidden');
           if (btn) {
-            btn.className = 'bg-black/60 hover:bg-black/80 active:scale-95 text-teal-300 px-2 py-1 rounded-lg border border-teal-500/30 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-sm';
+            btn.className = 'w-7 h-7 bg-teal-950/60 hover:bg-teal-900/80 active:scale-95 text-teal-300 rounded-lg border border-teal-500/30 flex items-center justify-center cursor-pointer transition-all shadow-sm';
+            btn.title = 'Mode: Video Stream (Click to switch to Telemetry HUD)';
           }
           if (icon) {
             icon.className = 'ph-bold ph-eye text-xs text-teal-400';
@@ -3754,14 +4172,20 @@
 
         const normX = (cx - (w / 2)) / (w / 2);
         const normY = (cy - (h / 2)) / (h / 2);
-        const gazeX = this.isFlippedH ? -normX : normX;
-        const gazeY = normY;
+        const rawGazeX = (this.isFlippedH ? -normX : normX) * 6;
+        const rawGazeY = (this.isFlippedV ? -normY : normY) * 3;
 
-        // Map to pupil displacement (-6 to +6 horizontal, -3 to +3 vertical)
-        const dx = Math.round(Math.max(-6, Math.min(6, gazeX * 6)));
-        const dy = Math.round(Math.max(-3, Math.min(3, gazeY * 3)));
+        // Smooth continuous gaze with EMA + hysteresis deadband so OLED pupils never twitch between adjacent integers
+        this.smoothGazeX = (this.smoothGazeX !== undefined) ? (0.72 * this.smoothGazeX + 0.28 * rawGazeX) : rawGazeX;
+        this.smoothGazeY = (this.smoothGazeY !== undefined) ? (0.72 * this.smoothGazeY + 0.28 * rawGazeY) : rawGazeY;
 
-        // Deduplicate: only transmit over BLE if pupil target actually changed
+        if (this.lastGazeDx !== null && Math.abs(this.smoothGazeX - this.lastGazeDx) < 0.65 && Math.abs(this.smoothGazeY - this.lastGazeDy) < 0.65) {
+          return;
+        }
+
+        const dx = Math.round(Math.max(-6, Math.min(6, this.smoothGazeX)));
+        const dy = Math.round(Math.max(-3, Math.min(3, this.smoothGazeY)));
+
         if (dx === this.lastGazeDx && dy === this.lastGazeDy) return;
         this.lastGazeDx = dx;
         this.lastGazeDy = dy;
@@ -3860,9 +4284,9 @@
         }
         if (iconBox) {
           if (this.deskCompanionActive) {
-            iconBox.className = 'w-8 h-8 rounded-xl bg-teal-500/20 border border-teal-400/40 flex items-center justify-center text-teal-300 shadow-sm shrink-0 transition-all';
+            iconBox.className = 'w-7 h-7 rounded-xl bg-teal-500/20 border border-teal-400/40 flex items-center justify-center text-teal-300 shadow-sm shrink-0 transition-all';
           } else {
-            iconBox.className = 'w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/40 shadow-sm shrink-0 transition-all';
+            iconBox.className = 'w-7 h-7 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/40 shadow-sm shrink-0 transition-all';
           }
         }
 
@@ -3958,17 +4382,27 @@
 
       updateCameraUI() {
         const btn = document.getElementById('migoVisionSwitchCamBtn');
+        const icon = document.getElementById('migoVisionCamIcon');
         const label = document.getElementById('migoVisionCamLabel');
         const rowBtn = document.getElementById('migoVisionRowSwitchCamBtn');
         const rowLabel = document.getElementById('migoVisionRowCamLabel');
 
         const isFront = this.facingMode === 'user';
         const text = isFront ? 'Front' : 'Back';
-        const title = isFront ? 'Switch to Back Camera' : 'Switch to Front Camera';
+        const title = isFront ? 'Camera: Front (Click to switch to Back)' : 'Camera: Back (Click to switch to Front)';
 
         if (label) label.innerText = text;
         if (rowLabel) rowLabel.innerText = text;
-        if (btn) btn.setAttribute('title', title);
+        if (btn) {
+          btn.setAttribute('title', title);
+          if (isFront) {
+            btn.className = 'w-7 h-7 bg-white/5 hover:bg-white/10 active:scale-95 text-white/70 hover:text-white rounded-lg border border-white/10 flex items-center justify-center cursor-pointer transition-all shadow-sm';
+            if (icon) icon.className = 'ph-bold ph-camera-rotate text-xs text-amber-400';
+          } else {
+            btn.className = 'w-7 h-7 bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 text-amber-300 rounded-lg border border-amber-500/40 flex items-center justify-center cursor-pointer transition-all shadow-sm';
+            if (icon) icon.className = 'ph-bold ph-camera-rotate text-xs text-amber-300';
+          }
+        }
         if (rowBtn) rowBtn.setAttribute('title', title);
       }
 
@@ -4049,35 +4483,65 @@
         }
       }
 
-      async probeHost(host) {
-        const cleanHost = host.replace(/^ws:\/\//i, '').replace(/^http:\/\//i, '').replace(/\/.*$/, '');
-        // Method 1: Fast HTTP /discover probe with 900ms timeout
-        try {
-          const ctrl = new AbortController();
-          const tid = setTimeout(() => ctrl.abort(), 900);
-          const res = await fetch(`http://${cleanHost}/discover`, { signal: ctrl.signal, mode: 'cors' });
-          clearTimeout(tid);
-          if (res.ok) {
-            const data = await res.json();
-            if (data && (data.device === 'MIGO_CAM' || data.stream === '/camera-stream')) {
-              return cleanHost;
-            }
-          }
-        } catch (e) {
-          // HTTP probe skipped or failed, proceed to WebSocket probe
-        }
+      openWifiPortal() {
+        const ipInput = document.getElementById('migoVisionIpInput');
+        const rawIp = (ipInput && ipInput.value.trim()) ? ipInput.value.trim() : (this.camIp || '192.168.4.1');
+        const cleanHost = rawIp.replace(/^ws:\/\//i, '').replace(/^http:\/\//i, '').replace(/\/.*$/, '');
+        window.open(`http://${cleanHost}/wifi`, '_blank', 'noopener');
+      }
 
-        // Method 2: Direct WebSocket handshake probe with 1200ms timeout
-        return new Promise((resolve, reject) => {
+      async probeHost(host, timeoutMs = 2400) {
+        const cleanHost = host.replace(/^ws:\/\//i, '').replace(/^http:\/\//i, '').replace(/\/.*$/, '');
+
+        // Run HTTP /discover, legacy /getip, and WebSocket probe IN PARALLEL so whichever responds first wins immediately!
+        // A 2400ms timeout gives Windows & Android mDNS (migo-cam.local) enough time to resolve on the first query.
+        const discoverProbe = (async () => {
+          const ctrl = new AbortController();
+          const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+          try {
+            const res = await fetch(`http://${cleanHost}/discover`, { signal: ctrl.signal, mode: 'cors', cache: 'no-store' });
+            clearTimeout(tid);
+            if (res.ok) {
+              const data = await res.json();
+              if (data && (data.device === 'MIGO_CAM' || data.stream === '/camera-stream')) {
+                if (data.sta_connected && data.sta_ip && data.sta_ip !== '0.0.0.0' && cleanHost !== '192.168.4.1') {
+                  return data.sta_ip;
+                }
+                return cleanHost;
+              }
+            }
+          } catch (e) {
+            clearTimeout(tid);
+          }
+          throw new Error('discover_failed');
+        })();
+
+        const getIpProbe = (async () => {
+          const ctrl = new AbortController();
+          const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+          try {
+            const res = await fetch(`http://${cleanHost}/getip`, { signal: ctrl.signal, mode: 'cors', cache: 'no-store' });
+            clearTimeout(tid);
+            if (res.ok) {
+              const txt = (await res.text()).trim();
+              if (/^\d+\.\d+\.\d+\.\d+$/.test(txt)) return cleanHost;
+            }
+          } catch (e) {
+            clearTimeout(tid);
+          }
+          throw new Error('getip_failed');
+        })();
+
+        const wsProbe = new Promise((resolve, reject) => {
           let resolved = false;
           let wsTest = null;
           const timer = setTimeout(() => {
             if (!resolved) {
               resolved = true;
               if (wsTest) { try { wsTest.close(); } catch (err) { } }
-              reject(new Error('timeout'));
+              reject(new Error('ws_timeout'));
             }
-          }, 1200);
+          }, timeoutMs);
 
           try {
             wsTest = new WebSocket(`ws://${cleanHost}/camera-stream`);
@@ -4094,7 +4558,7 @@
               if (!resolved) {
                 resolved = true;
                 clearTimeout(timer);
-                reject(new Error('error'));
+                reject(new Error('ws_error'));
               }
             };
           } catch (e) {
@@ -4102,52 +4566,111 @@
             reject(e);
           }
         });
+
+        return Promise.any([discoverProbe, getIpProbe, wsProbe]);
+      }
+
+      // Single-request ultra-fast HTTP probe for subnet sweeping (avoids sequential timeouts & WebSocket socket pool exhaustion)
+      async probeFastIp(ip, timeoutMs = 450) {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+        try {
+          const res = await fetch(`http://${ip}/discover`, { signal: ctrl.signal, mode: 'cors', cache: 'no-store' });
+          clearTimeout(tid);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && (data.device === 'MIGO_CAM' || data.stream === '/camera-stream')) {
+              return (data.sta_connected && data.sta_ip && data.sta_ip !== '0.0.0.0') ? data.sta_ip : ip;
+            }
+          }
+        } catch (e) {
+          clearTimeout(tid);
+        }
+        throw new Error('unreachable');
+      }
+
+      // Try to detect local machine's subnet prefix (e.g. "192.168.1.") via WebRTC ICE candidate in <250ms
+      async detectLocalSubnetPrefix() {
+        return new Promise((resolve) => {
+          let done = false;
+          const finish = (val) => { if (!done) { done = true; resolve(val); } };
+          setTimeout(() => finish(null), 250);
+          try {
+            const pc = new RTCPeerConnection({ iceServers: [] });
+            pc.createDataChannel('');
+            pc.onicecandidate = (e) => {
+              if (!e || !e.candidate || !e.candidate.candidate) return;
+              const m = e.candidate.candidate.match(/(192\.168\.\d+\.)\d+/);
+              if (m && m[1]) {
+                try { pc.close(); } catch (err) {}
+                finish(m[1]);
+              }
+            };
+            pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => finish(null));
+          } catch (e) {
+            finish(null);
+          }
+        });
       }
 
       async autoDetectCamera(onStatus) {
-        if (onStatus) onStatus('Probing primary camera addresses...');
+        if (onStatus) onStatus('Connecting to migo-cam.local...');
 
-        // Priority targets:
+        // STEP 1: Instant Priority Race (mDNS hostnames + Last Saved IP + AP IP)
+        // Because all priority targets and protocols race in parallel, a provisioned camera responds in ~50ms–1.5s!
         const candidates = [];
-        // 1. Last successfully saved IP
+        const ipInput = document.getElementById('migoVisionIpInput');
+        const typedIp = ipInput ? ipInput.value.trim() : '';
+        if (typedIp && !candidates.includes(typedIp)) candidates.push(typedIp);
         if (this.camIp && !candidates.includes(this.camIp)) candidates.push(this.camIp);
-        // 2. Multicast DNS hostname
         if (!candidates.includes('migo-cam.local')) candidates.push('migo-cam.local');
-        // 3. Default SoftAP Gateway IP
+        if (!candidates.includes('esp32cam.local')) candidates.push('esp32cam.local');
         if (!candidates.includes('192.168.4.1')) candidates.push('192.168.4.1');
-        // 4. Current page hostname if hosted locally
         if (window.location && window.location.hostname && !['localhost', '127.0.0.1'].includes(window.location.hostname) && !candidates.includes(window.location.hostname)) {
           candidates.push(window.location.hostname);
         }
 
-        // Test priority candidates in parallel
         try {
-          const winner = await Promise.any(candidates.map(c => this.probeHost(c)));
+          const winner = await Promise.any(candidates.map(c => this.probeHost(c, 2400)));
           if (winner) return winner;
         } catch (e) {
-          // Priority targets not responding
+          // Priority targets did not respond within 2.4s (e.g., Android device without mDNS support)
         }
 
-        // Fallback: Smart Subnet Scan
-        if (onStatus) onStatus('Scanning local network for MIGO-CAM...');
+        // STEP 2: Fast Parallel Subnet Sweep (< 1.8 seconds total) for devices where .local mDNS is blocked
+        if (onStatus) onStatus('Quick-scanning local Wi-Fi...');
 
-        let subnets = ['192.168.1.', '192.168.0.', '192.168.4.'];
-        if (window.location && window.location.hostname && /^192\.168\.\d+\./.test(window.location.hostname)) {
-          const localSub = window.location.hostname.replace(/\d+$/, '');
-          if (!subnets.includes(localSub)) subnets.unshift(localSub);
-        }
-
-        // Common router DHCP range allocations
-        const commonHosts = [1, 2, 3, 4, 10, 20, 50, 60, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 150, 200];
-
-        for (const sub of subnets) {
-          const batch = commonHosts.map(h => `${sub}${h}`);
-          try {
-            const found = await Promise.any(batch.map(ip => this.probeHost(ip)));
-            if (found) return found;
-          } catch (err) {
-            // continue next subnet
+        const subnets = [];
+        const pushSub = (sub) => { if (sub && !subnets.includes(sub)) subnets.push(sub); };
+        const addSubFromIp = (ipStr) => {
+          if (ipStr && /^\d+\.\d+\.\d+\.\d+$/.test(ipStr)) {
+            pushSub(ipStr.replace(/\d+$/, ''));
           }
+        };
+
+        const rtcSubnet = await this.detectLocalSubnetPrefix();
+        if (rtcSubnet) pushSub(rtcSubnet);
+        addSubFromIp(this.camIp);
+        addSubFromIp(typedIp);
+        if (window.location && window.location.hostname) addSubFromIp(window.location.hostname);
+        ['192.168.43.', '192.168.1.', '192.168.0.', '192.168.254.', '192.168.8.', '192.168.68.'].forEach(pushSub);
+
+        // Probe common router/hotspot DHCP leases in 3 fast 500ms waves (~1.5s total)
+        const commonHosts = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 20, 25, 30, 40, 50, 60, 75, 100, 101, 102, 103, 104, 105, 106, 107, 108, 110, 120, 150, 200];
+        const allTargets = [];
+        for (const sub of subnets.slice(0, 5)) {
+          for (const h of commonHosts) {
+            allTargets.push(`${sub}${h}`);
+          }
+        }
+
+        const waveSize = 60;
+        for (let i = 0; i < allTargets.length; i += waveSize) {
+          const wave = allTargets.slice(i, i + waveSize);
+          try {
+            const found = await Promise.any(wave.map(ip => this.probeFastIp(ip, 500)));
+            if (found) return found;
+          } catch (err) {}
         }
 
         return null;
@@ -4160,7 +4683,7 @@
 
         this.updateStatusUI('CONNECTING', 'Scanning...');
         if (typeof showMigoToast === 'function') {
-          showMigoToast('Scanning for MIGO ESP32-CAM...', 'info', 4000);
+          showMigoToast('Scanning network for MIGO ESP32-CAM...', 'info', 4000);
         }
 
         const autoBtn = document.getElementById('migoVisionAutoDetectBtn');
@@ -4190,7 +4713,7 @@
           } else {
             this.updateStatusUI('DISCONNECTED', 'Connect');
             if (typeof showMigoToast === 'function') {
-              showMigoToast('Could not auto-detect ESP32-CAM. Make sure it is powered on or connect directly to MIGO_CAM_DIRECT Wi-Fi.', 'warn', 5000);
+              showMigoToast('Could not auto-detect ESP32-CAM. Enter the IP shown on its Wi-Fi setup screen or connect to MIGO_CAM_DIRECT.', 'warn', 5500);
             }
           }
         } catch (e) {
@@ -4212,8 +4735,7 @@
           } else {
             const ipInput = document.getElementById('migoVisionIpInput');
             let ip = ipInput ? ipInput.value.trim() : this.camIp;
-            if (!ip || ip === '192.168.4.1') {
-              // If default or empty, run smart auto-connect
+            if (!ip) {
               this.autoDetectAndConnect();
             } else {
               this.camIp = ip;
@@ -4292,17 +4814,7 @@
         if (this.canvas && this.ctx && this.webcamVideo.readyState >= 2) {
           const vW = this.webcamVideo.videoWidth || 320;
           const vH = this.webcamVideo.videoHeight || 240;
-          if (this.canvas.width !== vW || this.canvas.height !== vH) {
-            this.canvas.width = vW;
-            this.canvas.height = vH;
-          }
-          this.ctx.save();
-          if (this.isFlippedH) {
-            this.ctx.translate(this.canvas.width, 0);
-            this.ctx.scale(-1, 1);
-          }
-          this.ctx.drawImage(this.webcamVideo, 0, 0, this.canvas.width, this.canvas.height);
-          this.ctx.restore();
+          this.renderSourceToCanvas(this.webcamVideo, vW, vH);
           if (!this.isProcessing) {
             this.processCurrentFrame();
           }
@@ -4311,6 +4823,10 @@
       }
 
       stopWebcam() {
+        if (this.isFlashOn) {
+          this.isFlashOn = false;
+          this.updateFlashUI();
+        }
         if (this.webcamRafId) {
           cancelAnimationFrame(this.webcamRafId);
           this.webcamRafId = null;
@@ -4326,15 +4842,100 @@
         }
       }
 
+      stopHttpCaptureLoop() {
+        this.httpStreamActive = false;
+        if (this.httpCaptureTimer) {
+          clearTimeout(this.httpCaptureTimer);
+          this.httpCaptureTimer = null;
+        }
+      }
+
+      startHttpCaptureLoop(cleanHost) {
+        this.stopHttpCaptureLoop();
+        this.httpStreamActive = true;
+        this.isConnected = true;
+        this.updateStatusUI('CONNECTED', 'Streaming');
+        const placeholder = document.getElementById('migoVisionPlaceholder');
+        if (placeholder) placeholder.classList.add('hidden');
+        this.syncHardwareExposure(cleanHost);
+        this.logTelemetry('LINK', `HTTP Snapshot Stream active from http://${cleanHost}/capture`, 'success');
+
+        const fetchNextFrame = async () => {
+          if (!this.httpStreamActive || !this.isConnected) return;
+          try {
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), 1800);
+            const res = await fetch(`http://${cleanHost}/capture?t=${Date.now()}`, {
+              signal: ctrl.signal,
+              mode: 'cors',
+              cache: 'no-store'
+            });
+            clearTimeout(tid);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const blob = await res.blob();
+            const bitmap = await createImageBitmap(blob);
+            if (this.canvas && this.ctx) {
+              const bW = bitmap.width || 320;
+              const bH = bitmap.height || 240;
+              this.renderSourceToCanvas(bitmap, bW, bH);
+              bitmap.close();
+
+              const now = performance.now();
+              this.frameCount++;
+              if (now - this.lastFpsCalc >= 1000) {
+                this.fps = Math.round((this.frameCount * 1000) / (now - this.lastFpsCalc));
+                this.frameCount = 0;
+                this.lastFpsCalc = now;
+                const fpsBadge = document.getElementById('migoVisionFpsBadge');
+                if (fpsBadge) fpsBadge.innerText = `${this.fps} FPS`;
+              }
+
+              if (!this.isProcessing) {
+                this.processCurrentFrame();
+              }
+            } else {
+              bitmap.close();
+            }
+            if (this.httpStreamActive) {
+              this.httpCaptureTimer = setTimeout(fetchNextFrame, this.isMonitorMuted ? 85 : 40);
+            }
+          } catch (err) {
+            if (this.httpStreamActive) {
+              this.httpCaptureTimer = setTimeout(fetchNextFrame, 350);
+            }
+          }
+        };
+
+        fetchNextFrame();
+      }
+
       connectCamera(camIp) {
         this.disconnectCamera();
-        const cleanHost = camIp.replace(/^ws:\/\//i, '').replace(/\/.*$/, '');
+        const cleanHost = camIp.replace(/^ws:\/\//i, '').replace(/^http:\/\//i, '').replace(/\/.*$/, '');
         const wsUrl = `ws://${cleanHost}/camera-stream`;
 
         this.updateStatusUI('CONNECTING', 'Connecting...');
+        let receivedFirstWsFrame = false;
+
         try {
           this.ws = new WebSocket(wsUrl);
           this.ws.binaryType = 'blob';
+
+          // Fallback timer: if WebSocket doesn't deliver frames within 2.5s on mobile, test HTTP /capture fallback
+          this.wsFallbackTimer = setTimeout(async () => {
+            if (!receivedFirstWsFrame && !this.httpStreamActive) {
+              try {
+                const ctrl = new AbortController();
+                const tid = setTimeout(() => ctrl.abort(), 1200);
+                const probe = await fetch(`http://${cleanHost}/capture?t=${Date.now()}`, { signal: ctrl.signal, mode: 'cors', cache: 'no-store' });
+                clearTimeout(tid);
+                if (probe.ok) {
+                  if (this.ws) { try { this.ws.close(); } catch (e) {} this.ws = null; }
+                  this.startHttpCaptureLoop(cleanHost);
+                }
+              } catch (e) {}
+            }
+          }, 2500);
 
           this.ws.onopen = () => {
             this.isConnected = true;
@@ -4344,9 +4945,9 @@
             if (this.speedPreset) {
               this.sendSpeedPreset(this.speedPreset);
             }
-            if (this.isMonitorMuted) {
-              this.sendWsCommand('STREAM:MUTE');
-            }
+            this.syncHardwareExposure(cleanHost);
+            // Always ensure camera stream is active so Telemetry Mode and Video Mode both receive AI frames
+            this.sendWsCommand('STREAM:RESUME');
             this.logTelemetry('LINK', `Connected to ws://${cleanHost}/camera-stream`, 'success');
           };
 
@@ -4370,12 +4971,19 @@
               return;
             }
 
-            // Headless / Monitor Muted Mode: drop binary video frames to eliminate CPU & GPU load
-            if (this.isMonitorMuted) {
+            receivedFirstWsFrame = true;
+
+            if (this.isDecodingFrame) {
               return;
             }
 
             const now = performance.now();
+            // In Telemetry HUD Mode, decode at ~12 FPS (every 80ms) to save GPU load while keeping AI models 100% seeing!
+            if (this.isMonitorMuted && (now - (this.lastMutedDecodeTime || 0) < 80)) {
+              return;
+            }
+            this.lastMutedDecodeTime = now;
+
             this.frameCount++;
             if (now - this.lastFpsCalc >= 1000) {
               this.fps = Math.round((this.frameCount * 1000) / (now - this.lastFpsCalc));
@@ -4385,22 +4993,13 @@
               if (fpsBadge) fpsBadge.innerText = `${this.fps} FPS`;
             }
 
+            this.isDecodingFrame = true;
             try {
               const bitmap = await createImageBitmap(event.data);
               if (this.canvas && this.ctx) {
                 const bW = bitmap.width || 320;
                 const bH = bitmap.height || 240;
-                if (this.canvas.width !== bW || this.canvas.height !== bH) {
-                  this.canvas.width = bW;
-                  this.canvas.height = bH;
-                }
-                this.ctx.save();
-                if (this.isFlippedH) {
-                  this.ctx.translate(this.canvas.width, 0);
-                  this.ctx.scale(-1, 1);
-                }
-                this.ctx.drawImage(bitmap, 0, 0);
-                this.ctx.restore();
+                this.renderSourceToCanvas(bitmap, bW, bH);
                 bitmap.close(); // Release GPU memory immediately after draw
                 if (!this.isProcessing) {
                   this.processCurrentFrame();
@@ -4410,15 +5009,30 @@
               }
             } catch (err) {
               // Frame decode error handling
+            } finally {
+              this.isDecodingFrame = false;
             }
           };
 
-          this.ws.onerror = (e) => {
-            console.warn('[MIGO Vision] WebSocket error:', e);
-            this.updateStatusUI('ERROR', 'Error');
+          this.ws.onerror = async (e) => {
+            console.warn('[MIGO Vision] WebSocket error, probing HTTP /capture fallback:', e);
+            if (!this.httpStreamActive) {
+              try {
+                const ctrl = new AbortController();
+                const tid = setTimeout(() => ctrl.abort(), 1200);
+                const probe = await fetch(`http://${cleanHost}/capture?t=${Date.now()}`, { signal: ctrl.signal, mode: 'cors', cache: 'no-store' });
+                clearTimeout(tid);
+                if (probe.ok) {
+                  this.startHttpCaptureLoop(cleanHost);
+                  return;
+                }
+              } catch (err) {}
+              this.updateStatusUI('ERROR', 'Error');
+            }
           };
 
           this.ws.onclose = () => {
+            if (this.httpStreamActive) return;
             this.isConnected = false;
             this.updateStatusUI('DISCONNECTED', 'Connect');
             const placeholder = document.getElementById('migoVisionPlaceholder');
@@ -4432,11 +5046,21 @@
       }
 
       disconnectCamera() {
+        if (this.isFlashOn) {
+          this.isFlashOn = false;
+          this.updateFlashUI();
+        }
+        if (this.wsFallbackTimer) {
+          clearTimeout(this.wsFallbackTimer);
+          this.wsFallbackTimer = null;
+        }
+        this.stopHttpCaptureLoop();
         this.stopWebcam();
         if (this.ws) {
           try { this.ws.close(); } catch (e) { }
           this.ws = null;
         }
+        this.isDecodingFrame = false;
         this.isConnected = false;
         this.updateStatusUI('DISCONNECTED', 'Connect');
         const placeholder = document.getElementById('migoVisionPlaceholder');
@@ -4503,6 +5127,11 @@
         this.smoothBox = null;
         this.activeGesture = null;
         this.currentRecognizedPerson = null;
+        this.lastTrackedLineX = undefined;
+        this.lineOffset = 0;
+        this.lastLineErrorX = 0;
+        this.filteredLineDeriv = 0;
+        this.lineMissedFrames = 0;
 
         if (modeName === 'OFF') {
           if (bOff) bOff.className = 'py-1.5 px-1 rounded-lg bg-white/20 text-white font-bold transition-all text-center cursor-pointer truncate';
@@ -4721,7 +5350,8 @@
           if (typeof blazeface === 'undefined') {
             await this.loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface');
           }
-          this.faceModel = await blazeface.load();
+          // Tuned scoreThreshold (0.58) & iouThreshold (0.3) so BlazeFace detects reliably on both ESP32-CAM OV2640 and Webcam
+          this.faceModel = await blazeface.load({ maxFaces: 3, scoreThreshold: 0.58, iouThreshold: 0.3 });
           localStorage.setItem('migo_ai_face_stored', 'true');
           this.isFaceModelLoading = false;
           this.hideModelLoader();
@@ -4757,7 +5387,8 @@
           if (typeof handpose === 'undefined') {
             await this.loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose');
           }
-          this.gestureModel = await handpose.load();
+          // Tuned detectionConfidence (0.65) so Handpose locks onto hands even on softer ESP32-CAM lighting
+          this.gestureModel = await handpose.load({ detectionConfidence: 0.65, iouThreshold: 0.3, scoreThreshold: 0.65 });
           localStorage.setItem('migo_ai_hand_stored', 'true');
           this.isGestureModelLoading = false;
           this.hideModelLoader();
@@ -4952,45 +5583,69 @@
         }
       }
 
-      // 1€ (One Euro) Adaptive Low-Jitter Filter for Real-Time Perception Tracking
-      // Provides rock-solid stability during stationary tracking, zero latency lag during fast movement
+      // 3-Frame Median + Normalized 1€ (One Euro) Adaptive Low-Jitter Filter for Real-Time Perception Tracking
+      // Eliminates raw neural bounding-box chatter on both Webcam and ESP32-CAM while keeping fast movement responsive
       filterBoundingBox(x, y, w, h, cx, cy, frameW, frameH) {
         const now = performance.now();
+        const fW = Math.max(1, frameW || 320);
+        const fH = Math.max(1, frameH || 240);
+
+        // Stage 1: 3-Frame Median Pre-Filter (rejects single-frame neural network bounding box spikes)
+        if (!this.boxHistory) this.boxHistory = [];
+        this.boxHistory.push({ x, y, w, h, cx, cy });
+        if (this.boxHistory.length > 3) this.boxHistory.shift();
+
+        const med3 = (arr) => {
+          if (arr.length === 1) return arr[0];
+          if (arr.length === 2) return (arr[0] + arr[1]) * 0.5;
+          const a = arr[0], b = arr[1], c = arr[2];
+          return Math.max(Math.min(a, b), Math.min(Math.max(a, b), c));
+        };
+
+        const mX = med3(this.boxHistory.map(b => b.x));
+        const mY = med3(this.boxHistory.map(b => b.y));
+        const mW = med3(this.boxHistory.map(b => b.w));
+        const mH = med3(this.boxHistory.map(b => b.h));
+        const mCX = med3(this.boxHistory.map(b => b.cx));
+        const mCY = med3(this.boxHistory.map(b => b.cy));
+
         if (!this.smoothBox) {
-          this.smoothBox = { x, y, w, h, cx, cy, vx: 0, vy: 0, lastTime: now };
+          this.smoothBox = { x: mX, y: mY, w: mW, h: mH, cx: mCX, cy: mCY, vx: 0, vy: 0, lastTime: now };
           return this.smoothBox;
         }
 
-        const dt = Math.max(0.005, Math.min(0.1, (now - (this.smoothBox.lastTime || now)) / 1000.0));
+        const dt = Math.max(0.008, Math.min(0.12, (now - (this.smoothBox.lastTime || now)) / 1000.0));
         this.smoothBox.lastTime = now;
 
-        // Instant velocity estimation with low-pass filtering
-        const rawVx = (cx - this.smoothBox.cx) / dt;
-        const rawVy = (cy - this.smoothBox.cy) / dt;
-        const dCutoff = 1.0;
+        // Stage 2: Normalized Velocity 1€ Filter (velocity in normalized frame units/sec [0..1]/s, NOT raw pixels/s!)
+        const rawVx = ((mCX - this.smoothBox.cx) / fW) / dt;
+        const rawVy = ((mCY - this.smoothBox.cy) / fH) / dt;
+        const dCutoff = 0.85;
         const alphaD = (2 * Math.PI * dCutoff * dt) / (1 + 2 * Math.PI * dCutoff * dt);
         const vx = alphaD * rawVx + (1 - alphaD) * (this.smoothBox.vx || 0);
         const vy = alphaD * rawVy + (1 - alphaD) * (this.smoothBox.vy || 0);
         this.smoothBox.vx = vx;
         this.smoothBox.vy = vy;
 
-        // Adaptive cutoff frequency: scales with velocity (beta = 0.045, minCutoff = 1.2 Hz)
-        const speed = Math.hypot(vx, vy);
-        const minCutoff = 1.2;
-        const beta = 0.045;
-        const cutoff = minCutoff + beta * speed;
-        const alpha = Math.max(0.15, Math.min(0.95, (2 * Math.PI * cutoff * dt) / (1 + 2 * Math.PI * cutoff * dt)));
+        // Adaptive cutoff frequency: rock-solid 0.65 Hz when still, scales smoothly with true normalized speed
+        const normSpeed = Math.hypot(vx, vy);
+        const minCutoff = 0.65;
+        const beta = 1.8;
+        const cutoff = minCutoff + beta * normSpeed;
+        const alpha = Math.max(0.08, Math.min(0.82, (2 * Math.PI * cutoff * dt) / (1 + 2 * Math.PI * cutoff * dt)));
 
-        // Micro-deadband: if normalized position difference is below noise floor (0.6%), suppress jitter completely
-        const normDist = Math.hypot(cx - this.smoothBox.cx, cy - this.smoothBox.cy) / Math.max(1, frameW);
-        const effectiveAlpha = normDist < 0.006 ? 0.08 : (normDist > 0.04 ? 0.92 : alpha);
+        // Stationary micro-deadband: suppress neural bbox chatter below 1.8% of frame width
+        const normDist = Math.hypot((mCX - this.smoothBox.cx) / fW, (mCY - this.smoothBox.cy) / fH);
+        const effectiveAlpha = normDist < 0.018 ? 0.05 : (normDist > 0.085 ? 0.80 : alpha);
+        // Bounding box dimensions (w, h) fluctuate more than centroids in BlazeFace/COCO-SSD, so damp size 2.2x stronger
+        const sizeAlpha = Math.max(0.04, Math.min(0.32, effectiveAlpha * 0.45));
 
-        let smX = effectiveAlpha * x + (1 - effectiveAlpha) * this.smoothBox.x;
-        let smY = effectiveAlpha * y + (1 - effectiveAlpha) * this.smoothBox.y;
-        let smW = effectiveAlpha * w + (1 - effectiveAlpha) * this.smoothBox.w;
-        let smH = effectiveAlpha * h + (1 - effectiveAlpha) * this.smoothBox.h;
-        let smCX = effectiveAlpha * cx + (1 - effectiveAlpha) * this.smoothBox.cx;
-        let smCY = effectiveAlpha * cy + (1 - effectiveAlpha) * this.smoothBox.cy;
+        const smCX = effectiveAlpha * mCX + (1 - effectiveAlpha) * this.smoothBox.cx;
+        const smCY = effectiveAlpha * mCY + (1 - effectiveAlpha) * this.smoothBox.cy;
+        const smW = sizeAlpha * mW + (1 - sizeAlpha) * this.smoothBox.w;
+        const smH = sizeAlpha * mH + (1 - sizeAlpha) * this.smoothBox.h;
+        const smX = smCX - smW * 0.5;
+        const smY = smCY - smH * 0.5;
 
         this.smoothBox.x = smX;
         this.smoothBox.y = smY;
@@ -4999,6 +5654,30 @@
         this.smoothBox.cx = smCX;
         this.smoothBox.cy = smCY;
         return this.smoothBox;
+      }
+
+      // Per-Joint Adaptive De-Jitter Filter for 21 Handpose Landmarks (eliminates hand skeleton & finger angle jitter)
+      smoothHandLandmarks(rawLandmarks, frameW, frameH) {
+        if (!rawLandmarks || rawLandmarks.length < 21) return rawLandmarks;
+        const fW = Math.max(1, frameW || 320);
+        if (!this.smoothedLandmarks || this.smoothedLandmarks.length !== 21) {
+          this.smoothedLandmarks = rawLandmarks.map(pt => [pt[0], pt[1], pt[2] || 0]);
+          return this.smoothedLandmarks;
+        }
+        for (let i = 0; i < 21; i++) {
+          const rx = rawLandmarks[i][0];
+          const ry = rawLandmarks[i][1];
+          const rz = rawLandmarks[i][2] || 0;
+          const sx = this.smoothedLandmarks[i][0];
+          const sy = this.smoothedLandmarks[i][1];
+          const sz = this.smoothedLandmarks[i][2];
+          const normDelta = Math.hypot(rx - sx, ry - sy) / fW;
+          const jointAlpha = normDelta < 0.014 ? 0.12 : (normDelta > 0.06 ? 0.78 : 0.38);
+          this.smoothedLandmarks[i][0] = jointAlpha * rx + (1 - jointAlpha) * sx;
+          this.smoothedLandmarks[i][1] = jointAlpha * ry + (1 - jointAlpha) * sy;
+          this.smoothedLandmarks[i][2] = jointAlpha * rz + (1 - jointAlpha) * sz;
+        }
+        return this.smoothedLandmarks;
       }
 
       pipelineColorTracking() {
@@ -5119,9 +5798,9 @@
           }
         }
 
-        // Missed frame handler with hysteresis
+        // Missed frame handler with 5-frame coasting hysteresis so brief lighting flickers don't drop lock
         this.colorMissedFrames = (this.colorMissedFrames || 0) + 1;
-        if (this.colorMissedFrames >= 3) {
+        if (this.colorMissedFrames >= 5) {
           this.targetDetected = false;
           this.boxHistory = [];
           this.smoothBox = null;
@@ -5298,7 +5977,20 @@
         const predictions = await this.faceModel.estimateFaces(this.canvas, false);
 
         if (predictions && predictions.length > 0) {
-          const p = predictions[0];
+          // Target-Lock Persistence: if multiple faces exist and we already have a lock, pick the face closest to smoothBox
+          let p = predictions[0];
+          if (predictions.length > 1 && this.smoothBox) {
+            let bestDist = Infinity;
+            for (const cand of predictions) {
+              const cx = (cand.topLeft[0] + cand.bottomRight[0]) * 0.5;
+              const cy = (cand.topLeft[1] + cand.bottomRight[1]) * 0.5;
+              const d = Math.hypot(cx - this.smoothBox.cx, cy - this.smoothBox.cy);
+              if (d < bestDist) {
+                bestDist = d;
+                p = cand;
+              }
+            }
+          }
           const start = p.topLeft;
           const end = p.bottomRight;
           const boxW = end[0] - start[0];
@@ -5395,8 +6087,9 @@
           }
           this.faceMissedFrames = 0;
         } else {
+          // 5-frame coasting buffer prevents single-frame neural drops from resetting smoothBox or blinking reticle
           this.faceMissedFrames = (this.faceMissedFrames || 0) + 1;
-          if (this.faceMissedFrames >= 2) {
+          if (this.faceMissedFrames >= 5) {
             this.targetDetected = false;
             this.currentRecognizedPerson = null;
             this.lastDescriptor = null;
@@ -5458,8 +6151,10 @@
             const hands = await this.gestureModel.estimateHands(this.canvas);
 
             if (hands && hands.length > 0) {
+              this.handMissedFrames = 0;
               const hand = hands[0];
-              const landmarks = hand.landmarks; // 21 x [x, y, z]
+              // Apply per-joint 21-landmark de-jitter filter so skeleton and finger angle ratios are rock-steady
+              const landmarks = this.smoothHandLandmarks(hand.landmarks, w, h);
 
               // Draw Visual Skeleton on live stream canvas!
               this.drawHandSkeleton(landmarks);
@@ -5682,11 +6377,16 @@
           }
         }
 
-        // If no hand is in view (or model is still downloading), NEVER trigger PALM or mistake face for hand!
+        // 4-frame coasting buffer prevents single-frame handpose drops from resetting gesture state or halting motors
+        this.handMissedFrames = (this.handMissedFrames || 0) + 1;
+        if (this.handMissedFrames < 4 && this.targetDetected && this.gestureModel) {
+          return;
+        }
         this.targetDetected = false;
         this.activeGesture = null;
         this.lastDispatchedGesture = null;
         this.gestureHistory = []; // Reset debouncing window on hand loss
+        this.smoothedLandmarks = null;
         this.boxHistory = [];
         this.smoothBox = null;
         this.hideReticle();
@@ -5704,9 +6404,10 @@
 
         if (this.objectModel) {
           try {
-            // Limit maxNumBoxes to 6 and minScore to 0.35 for fast real-time NMS
-            const predictions = await this.objectModel.detect(this.canvas, 6, 0.35);
-            let matches = predictions.filter(p => p.score >= this.objectConfidence);
+            // Lower minScore to 0.28 so ESP32-CAM OV2640 frames detect objects & animals reliably
+            const predictions = await this.objectModel.detect(this.canvas, 6, 0.28);
+            const effectiveMinScore = this.source === 'esp32' ? Math.min(this.objectConfidence, 0.32) : this.objectConfidence;
+            let matches = predictions.filter(p => p.score >= effectiveMinScore);
 
             const ANIMAL_CLASSES = [
               'dog', 'cat', 'bird', 'horse', 'sheep', 'cow',
@@ -5735,8 +6436,20 @@
 
             if (matches.length > 0) {
               this.objectMissedFrames = 0;
-              // Select highest confidence or largest target
-              matches.sort((a, b) => (b.bbox[2] * b.bbox[3]) - (a.bbox[2] * a.bbox[3]));
+              // Target-Lock Persistence: if we already have a locked smoothBox, prefer the matching object closest to it
+              if (matches.length > 1 && this.smoothBox) {
+                matches.sort((a, b) => {
+                  const acx = a.bbox[0] + a.bbox[2] * 0.5;
+                  const acy = a.bbox[1] + a.bbox[3] * 0.5;
+                  const bcx = b.bbox[0] + b.bbox[2] * 0.5;
+                  const bcy = b.bbox[1] + b.bbox[3] * 0.5;
+                  const da = Math.hypot(acx - this.smoothBox.cx, acy - this.smoothBox.cy);
+                  const db = Math.hypot(bcx - this.smoothBox.cx, bcy - this.smoothBox.cy);
+                  return da - db;
+                });
+              } else {
+                matches.sort((a, b) => (b.bbox[2] * b.bbox[3]) - (a.bbox[2] * a.bbox[3]));
+              }
               const best = matches[0];
               const [bx, by, bw, bh] = best.bbox;
               const cx = bx + bw / 2;
@@ -5771,9 +6484,9 @@
           }
         }
 
-        // 2-frame coasting buffer prevents single-frame motion blur dropouts from halting motors
+        // 5-frame coasting buffer prevents single-frame motion blur dropouts from resetting smoothBox or halting motors
         this.objectMissedFrames = (this.objectMissedFrames || 0) + 1;
-        if (this.objectMissedFrames >= 2) {
+        if (this.objectMissedFrames >= 5) {
           this.targetDetected = false;
           this.detectedObjectClass = null;
           this.isAnimalDetected = false;
@@ -5788,77 +6501,123 @@
       pipelineLineTracking() {
         const w = this.canvas.width;
         const h = this.canvas.height;
-        // Region of interest: Ground scan in bottom 40% of viewport
-        const startY = Math.floor(h * 0.58);
+        // Ground ROI: Scan bottom 58% of viewport for forward ground track & lookahead horizon
+        const startY = Math.floor(h * 0.42);
         const scanHeight = h - startY;
 
         const imgData = this.ctx.getImageData(0, startY, w, scanHeight);
         const data = imgData.data;
 
-        // Step 1: Compute real-time luminance histogram for dynamic Otsu-inspired thresholding
-        // Adapts dynamically to room brightness, shadows, and flooring contrast variations
-        const hist = new Uint16Array(32); // 32 bins (8 intensity levels per bin)
-        let totalSampled = 0;
-        for (let i = 0; i < data.length; i += 16) {
-          const lum = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8;
-          hist[lum >> 3]++;
-          totalSampled++;
-        }
+        // Multi-scale 1D Symmetric Valley/Ridge Stripe Detector across 5 ground lookahead bands
+        // Band 0 (near bumper/drive wheels) carries highest steering authority (weight 5)
+        // Band 4 (far ground horizon) anticipates curves and sharp corners (weight 1)
+        const bandRatios = [0.88, 0.76, 0.64, 0.52, 0.44];
+        const bandWeights = [5, 4, 3, 2, 1];
+        const detectedPoints = [];
+        let sumWeightedX = 0;
+        let totalWeight = 0;
+        let refX = (this.lastTrackedLineX !== undefined) ? this.lastTrackedLineX : (w / 2.0);
+        const isDark = this.lineDarkOnLight !== false;
 
-        // Find adaptive threshold separating line from background
-        let cum = 0;
-        let p25 = 85, p75 = 170;
-        const t25 = totalSampled * 0.25;
-        const t75 = totalSampled * 0.75;
-        for (let b = 0; b < 32; b++) {
-          cum += hist[b];
-          if (cum >= t25 && p25 === 85) p25 = (b << 3) + 4;
-          if (cum >= t75) { p75 = (b << 3) + 4; break; }
-        }
+        for (let b = 0; b < bandRatios.length; b++) {
+          const bandY = Math.floor(h * bandRatios[b]);
+          const weight = bandWeights[b];
+          const localY = bandY - startY;
 
-        const isDarkTape = this.lineDarkOnLight;
-        const lineThreshold = isDarkTape ? Math.max(45, Math.min(130, p25 + 18)) : Math.min(220, Math.max(140, p75 - 18));
+          // 3-row vertical median/average smoothing along probe row to eliminate sensor shot noise
+          const lums = new Uint8Array(w);
+          let minLum = 255, maxLum = 0;
 
-        // Step 2: Multi-band horizontal slice centroid detection (3 independent bands for trajectory prediction)
-        const bands = 3;
-        const sliceH = Math.floor(scanHeight / bands);
-        let validSlices = 0;
-        let combinedCentroidX = 0;
+          for (let x = 0; x < w; x++) {
+            let lSum = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+              const py = Math.max(0, Math.min(scanHeight - 1, localY + dy));
+              const idx = (py * w + x) * 4;
+              lSum += (data[idx] * 77 + data[idx + 1] * 150 + data[idx + 2] * 29) >> 8;
+            }
+            const lum = Math.floor(lSum / 3);
+            lums[x] = lum;
+            if (lum < minLum) minLum = lum;
+            if (lum > maxLum) maxLum = lum;
+          }
 
-        for (let b = 0; b < bands; b++) {
-          const sliceStartY = b * sliceH;
-          const sliceEndY = sliceStartY + sliceH;
-          let sliceSumX = 0;
-          let sliceWeight = 0;
+          // Dynamic contrast threshold adapts instantly to room ambient lighting and camera auto-exposure
+          const dynamicMinC = Math.max(4, Math.min(18, Math.floor((maxLum - minLum) * 0.12)));
+          let bestCand = null;
 
-          for (let y = sliceStartY; y < sliceEndY; y += 2) {
-            for (let x = 0; x < w; x += 2) {
-              const idx = (y * w + x) * 4;
-              const lum = (data[idx] * 77 + data[idx + 1] * 150 + data[idx + 2] * 29) >> 8;
-              const isMatch = isDarkTape ? (lum < lineThreshold) : (lum > lineThreshold);
-              if (isMatch) {
-                // Reject width anomalies (isolated single-pixel glares)
-                sliceSumX += x;
-                sliceWeight++;
+          // Multi-scale stripe search: test radii 2px (fine pen) to 22px (wide tape)
+          const testRadii = [2, 4, 7, 11, 16, 22];
+          for (let ri = 0; ri < testRadii.length; ri++) {
+            const r = testRadii[ri];
+            const step = (r <= 4) ? 1 : 2;
+            for (let x = r + 2; x < w - r - 2; x += step) {
+              const left = lums[x - r];
+              const right = lums[x + r];
+              const core = lums[x];
+              const cLeft = isDark ? (left - core) : (core - left);
+              const cRight = isDark ? (right - core) : (core - right);
+
+              if (cLeft >= dynamicMinC && cRight >= dynamicMinC) {
+                // Strict Dual-Contrast Symmetry Filter:
+                // Rejects single step-edges (table boundaries, paper edges, floor borders, and wall shadows)
+                // A true line stripe has contrasting background on BOTH sides (symmetry >= 32%)
+                const minC = Math.min(cLeft, cRight);
+                const maxC = Math.max(cLeft, cRight);
+                const symmetry = minC / maxC;
+                if (symmetry < 0.32) continue;
+
+                // Measure true continuous stripe width
+                let xl = x;
+                while (xl > 0 && (isDark ? (lums[xl] < core + dynamicMinC) : (lums[xl] > core - dynamicMinC))) {
+                  xl--;
+                }
+                let xr = x;
+                while (xr < w - 1 && (isDark ? (lums[xr] < core + dynamicMinC) : (lums[xr] > core - dynamicMinC))) {
+                  xr++;
+                }
+                const stripeW = xr - xl + 1;
+                // Reject width anomalies (isolated 1px glares or wide dark furniture/desks > 22% frame width)
+                if (stripeW < 2 || stripeW > (w * 0.22)) continue;
+
+                const subX = (xl + xr) / 2.0;
+                const contrastScore = (cLeft + cRight) * symmetry;
+                const distPenalty = Math.abs(subX - refX) / (w / 2.0);
+                const totalScore = contrastScore * (1.0 - 0.40 * Math.min(1.0, distPenalty));
+
+                if (!bestCand || totalScore > bestCand.score) {
+                  bestCand = {
+                    score: totalScore,
+                    x: subX,
+                    y: bandY,
+                    width: stripeW,
+                    symmetry: symmetry,
+                    weight: weight
+                  };
+                }
               }
             }
           }
 
-          if (sliceWeight >= 16) {
-            const sliceCentroid = sliceSumX / sliceWeight;
-            // Near slices (lower on screen, nearer wheels) carry 2.5x higher steering weight
-            const sliceFactor = (b + 1) * (b + 1);
-            combinedCentroidX += sliceCentroid * sliceFactor;
-            validSlices += sliceFactor;
+          if (bestCand) {
+            detectedPoints.push(bestCand);
+            sumWeightedX += bestCand.x * weight;
+            totalWeight += weight;
+            refX = bestCand.x; // Track trajectory curve into next lookahead band
           }
         }
 
-        if (validSlices > 0) {
+        if (detectedPoints.length > 0) {
           this.lineMissedFrames = 0;
-          const rawCentroidX = combinedCentroidX / validSlices;
-          const rawErrorX = (rawCentroidX - (w / 2)) / (w / 2); // Normalized [-1.0, 1.0]
+          const rawCentroidX = sumWeightedX / totalWeight;
+          this.lastTrackedLineX = rawCentroidX;
+          const rawErrorX = (rawCentroidX - (w / 2.0)) / (w / 2.0); // Normalized [-1.0, 1.0]
 
-          // 1€ Adaptive smoothing for line offset to eliminate steering jitter
+          // Curvature / Heading Rate (anticipates sharp curves before wheels reach them)
+          const nearPt = detectedPoints[0];
+          const farPt = detectedPoints[detectedPoints.length - 1];
+          const headingErr = (detectedPoints.length >= 2) ? ((farPt.x - nearPt.x) / (w / 2.0)) : 0;
+
+          // 1€ Adaptive smoothing for line offset to eliminate steering chatter
           const now = performance.now();
           const dt = Math.max(0.005, Math.min(0.1, (now - (this.lastLineTime || now)) / 1000.0));
           this.lastLineTime = now;
@@ -5872,14 +6631,54 @@
           const lineCutoff = 1.4 + 0.05 * lineSpeedRate;
           const alphaLine = Math.max(0.18, Math.min(0.92, (2 * Math.PI * lineCutoff * dt) / (1 + 2 * Math.PI * lineCutoff * dt)));
 
-          const errorX = (Math.abs(rawErrorX - (this.lineOffset || 0)) < 0.008) 
-            ? this.lineOffset 
+          const errorX = (Math.abs(rawErrorX - (this.lineOffset || 0)) < 0.006)
+            ? this.lineOffset
             : (alphaLine * rawErrorX + (1 - alphaLine) * (this.lineOffset || 0));
 
           this.lastLineErrorX = errorX;
           this.lineOffset = errorX;
           this.targetDetected = true;
           this.lastTargetSeenTime = Date.now();
+
+          // Average detected stripe width
+          let totalWidth = 0;
+          for (let i = 0; i < detectedPoints.length; i++) totalWidth += detectedPoints[i].width;
+          const avgWidth = totalWidth / detectedPoints.length;
+
+          // Augmented Reality (AR) Ground Trajectory Overlay directly on Canvas
+          this.ctx.save();
+          // Subtle lookahead scan horizon
+          this.ctx.strokeStyle = 'rgba(20, 184, 166, 0.35)';
+          this.ctx.setLineDash([4, 4]);
+          this.ctx.lineWidth = 1;
+          this.ctx.beginPath();
+          this.ctx.moveTo(0, startY);
+          this.ctx.lineTo(w, startY);
+          this.ctx.stroke();
+          this.ctx.setLineDash([]);
+
+          // Connecting trajectory path hugging the line
+          this.ctx.strokeStyle = '#14b8a6';
+          this.ctx.lineWidth = 3;
+          this.ctx.shadowColor = '#2dd4bf';
+          this.ctx.shadowBlur = 6;
+          this.ctx.beginPath();
+          for (let i = 0; i < detectedPoints.length; i++) {
+            const pt = detectedPoints[i];
+            if (i === 0) this.ctx.moveTo(pt.x, pt.y);
+            else this.ctx.lineTo(pt.x, pt.y);
+          }
+          this.ctx.stroke();
+
+          // Glowing teal tracking nodes on each detected ground band
+          for (let i = 0; i < detectedPoints.length; i++) {
+            const pt = detectedPoints[i];
+            this.ctx.fillStyle = '#2dd4bf';
+            this.ctx.beginPath();
+            this.ctx.arc(pt.x, pt.y, 3.5, 0, 2 * Math.PI);
+            this.ctx.fill();
+          }
+          this.ctx.restore();
 
           // Update needle gauge in HUD
           const needle = document.getElementById('migoVisionLineGaugeNeedle');
@@ -5888,27 +6687,34 @@
             needle.style.left = `${pct}%`;
           }
 
-          // Draw Line Reticle Guideline
-          this.renderReticle(rawCentroidX - 18, startY + 10, 36, scanHeight - 20, rawCentroidX, startY + (scanHeight / 2), w, h, `LINE: ${(errorX >= 0 ? '+' : '') + errorX.toFixed(2)}`);
+          // Bounding Reticle accurately framing the tracked line
+          const boxX = Math.max(0, rawCentroidX - Math.max(16, avgWidth * 1.6));
+          const boxW = Math.max(32, avgWidth * 3.2);
+          const boxY = Math.max(0, farPt.y - 10);
+          const boxH = Math.min(h - boxY, (nearPt.y - farPt.y) + 20);
+          const signStr = errorX >= 0 ? '+' : '';
+          const label = `LINE: ${signStr}${errorX.toFixed(2)} (${Math.round(avgWidth)}px)`;
+
+          this.renderReticle(boxX, boxY, boxW, boxH, rawCentroidX, (boxY + boxH / 2), w, h, label);
           this.updateHUDTelemetry('LINE TRACK', errorX);
 
-          // Real-time Closed-Loop PD Line Follower Steering (Smooth proportional-derivative response)
-          if (this.autoDrive && (now - this.lastLineDispatchTime > 38)) {
+          // Real-Time Closed-Loop PD Line Follower Steering (Smooth proportional-derivative response + heading lookahead)
+          if (this.autoDrive && (now - (this.lastLineDispatchTime || 0) > 38)) {
             this.lastLineDispatchTime = now;
             const baseSpd = this.lineBaseSpeed || 140;
-            // Dynamic proportional gain with smooth derivative damping to eliminate oscillation
-            const turnSteer = Math.round(errorX * 135 + dError * 22);
+            const turnSteer = Math.round(errorX * 130 + dError * 24 + headingErr * 20);
 
-            // True differential turning: inner wheel slows or pivots backward for sharp 90° bends
-            const minWheelSpd = Math.abs(errorX) > 0.32 ? -120 : 0;
+            // True differential turning: inner wheel slows or pivots backward for sharp bends
+            const minWheelSpd = Math.abs(errorX) > 0.32 ? -110 : 0;
             const leftSpeed = Math.min(225, Math.max(minWheelSpd, baseSpd + turnSteer));
             const rightSpeed = Math.min(225, Math.max(minWheelSpd, baseSpd - turnSteer));
             this.dispatchMotorJoy(leftSpeed, rightSpeed);
           }
         } else {
           this.lineMissedFrames = (this.lineMissedFrames || 0) + 1;
-          if (this.lineMissedFrames >= 3) {
+          if (this.lineMissedFrames >= 4) {
             this.targetDetected = false;
+            this.lastTrackedLineX = undefined;
             this.lineOffset = 0;
             this.lastLineErrorX = 0;
             this.filteredLineDeriv = 0;
@@ -5951,49 +6757,74 @@
 
       handleTargetTelemetry(targetX, targetY, frameW, frameH, area) {
         const now = performance.now();
-        const dt = Math.max(0.01, Math.min(0.1, (now - this.lastErrorTime) / 1000.0));
+        const dt = Math.max(0.015, Math.min(0.12, (now - this.lastErrorTime) / 1000.0));
 
-        const errorX = (targetX - (frameW / 2)) / (frameW / 2);
+        const rawErrorX = (targetX - (frameW / 2)) / (frameW / 2);
+        // Smooth errorX and apply micro-deadband so tiny residual centroid shifts never cause derivative spikes
+        this.filteredErrorX = (this.filteredErrorX !== undefined && !isNaN(this.filteredErrorX))
+          ? (Math.abs(rawErrorX - this.filteredErrorX) < 0.015 ? this.filteredErrorX : (0.65 * rawErrorX + 0.35 * this.filteredErrorX))
+          : rawErrorX;
+        const errorX = this.filteredErrorX;
 
-        // Low-pass exponential moving average filter on derivative to suppress camera frame-jitter noise
+        // Heavily damped derivative filter to suppress camera frame-jitter noise
         const rawDerivX = (errorX - this.lastErrorX) / dt;
         this.filteredDerivX = (this.filteredDerivX !== undefined && !isNaN(this.filteredDerivX))
-          ? (0.70 * this.filteredDerivX + 0.30 * rawDerivX)
+          ? (0.82 * this.filteredDerivX + 0.18 * rawDerivX)
           : rawDerivX;
-        if (Math.abs(this.filteredDerivX) < 0.04) this.filteredDerivX = 0;
+        if (Math.abs(this.filteredDerivX) < 0.08) this.filteredDerivX = 0;
 
         const turnSignal = (this.Kp * errorX) + (this.Kd * this.filteredDerivX);
 
         this.lastErrorX = errorX;
         this.lastErrorTime = now;
 
-        // Proximity & Distance Calculation (Sweet-Spot Following with soft transition)
-        const frameArea = frameW * frameH;
-        const areaRatio = area / frameArea;
-
-        let targetThrottle = 0;
-        let distanceState = 'IN RANGE';
+        // Proximity & Distance Calculation with Dual-Threshold Schmitt Trigger Hysteresis
+        // Prevents forward/backward jitter when bounding-box area hovers near threshold boundaries!
+        const frameArea = Math.max(1, frameW * frameH);
+        const rawAreaRatio = area / frameArea;
+        this.filteredAreaRatio = (this.filteredAreaRatio !== undefined && !isNaN(this.filteredAreaRatio))
+          ? (0.80 * this.filteredAreaRatio + 0.20 * rawAreaRatio)
+          : rawAreaRatio;
+        const areaRatio = this.filteredAreaRatio;
 
         const ultraDist = (typeof migoLastDistanceCm === 'number' && migoLastDistanceCm > 0) ? migoLastDistanceCm : 999;
 
-        if (areaRatio < 0.07 && ultraDist > 30) {
-          targetThrottle = 145; // Target is far: drive forward
-          distanceState = 'APPROACHING';
-        } else if (areaRatio > 0.24 || ultraDist < 20) {
-          targetThrottle = -115; // Target is too close: gently back away
-          distanceState = 'BACKING UP';
+        if (!this.distanceZone) this.distanceZone = 'SWEET';
+        if (this.distanceZone === 'APPROACH') {
+          if (areaRatio >= 0.088 || ultraDist <= 26) this.distanceZone = 'SWEET';
+        } else if (this.distanceZone === 'BACKUP') {
+          if (areaRatio <= 0.210 && ultraDist >= 24) this.distanceZone = 'SWEET';
         } else {
-          targetThrottle = 0; // Target in sweet spot: hold distance!
-          distanceState = 'SWEET SPOT';
+          if (areaRatio < 0.062 && ultraDist > 32) this.distanceZone = 'APPROACH';
+          else if (areaRatio > 0.255 || ultraDist < 19) this.distanceZone = 'BACKUP';
+        }
+
+        let targetThrottle = 0;
+        let distanceState = 'SWEET SPOT';
+        if (this.distanceZone === 'APPROACH') {
+          targetThrottle = 140;
+          distanceState = 'APPROACHING';
+        } else if (this.distanceZone === 'BACKUP') {
+          targetThrottle = -115;
+          distanceState = 'BACKING UP';
         }
 
         // Smooth throttle transition to prevent abrupt forward/reverse jolts
         this.filteredThrottle = this.filteredThrottle !== undefined
-          ? (this.filteredThrottle + (targetThrottle - this.filteredThrottle) * 0.25)
+          ? (this.filteredThrottle + (targetThrottle - this.filteredThrottle) * 0.22)
           : targetThrottle;
-        const throttle = Math.abs(this.filteredThrottle) < 6 ? 0 : Math.round(this.filteredThrottle);
+        const throttle = Math.abs(this.filteredThrottle) < 8 ? 0 : Math.round(this.filteredThrottle);
 
         this.updateHUDTelemetry(distanceState, errorX);
+
+        // Emit periodic perception telemetry to Telemetry HUD (so Telemetry Mode shows live AI lock data!)
+        if (now - (this.lastTelemetryDispatchTime || 0) > 450) {
+          this.lastTelemetryDispatchTime = now;
+          const targetDesc = this.mode === 'FACE'
+            ? (this.currentRecognizedPerson ? `Face:${this.currentRecognizedPerson}` : 'Face')
+            : (this.mode === 'OBJECT' ? `Obj:${this.detectedObjectClass || 'target'}` : this.mode);
+          this.logTelemetry(this.mode, `${targetDesc} | ${distanceState} | e_x:${(errorX >= 0 ? '+' : '') + errorX.toFixed(2)} | area:${(areaRatio * 100).toFixed(1)}%`, 'info');
+        }
 
         // Decoupled Perception Vector: updates target state for the deterministic 30 Hz motion control engine
         this.telemetryState = { errorX, turnSignal, throttle };
@@ -6001,7 +6832,8 @@
       }
 
       stepMotionControlLoop() {
-        if (!this.autoDrive || this.mode === 'OFF' || this.mode === 'LINE') {
+        // Exclude LINE and GESTURE modes because they dispatch their own dedicated steering/teleop commands!
+        if (!this.autoDrive || this.mode === 'OFF' || this.mode === 'LINE' || this.mode === 'GESTURE') {
           return;
         }
 
@@ -7558,62 +8390,113 @@
       }
     }
 
-    // --- Tutorials Logic ---
-    // --- Tutorials Logic ---
+    // --- Guide Modal Logic ---
+    function switchGuideTab(tabId) {
+      const sec = document.getElementById('guideSec_' + tabId);
+      if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function openGuide() {
+      document.getElementById('guideModal').classList.remove('hidden');
+    }
+
+    // --- Tutorials Logic (Enhanced Caretaker Protocol for Explorer & Inventor Kids) ---
     const tutorials = [
       {
-        title: "Level 0: The Blueprint of Responsibility",
-        focus: "Patience and Precision",
-        story: "The Great Blight had come. A hot, choking dust covered the once-green town. The Community Garden, the heart of the town, was slowly dying. You knew you had to save it. You only had one chance: build a helper bot, MIGO, to bring the water. Rushing only led to broken pieces. You took a deep, slow breath and built the robot slowly until MIGO was perfect.",
-        activity: "1. Sort the parts: Group the wheels, wires, and body pieces.<br>2. Build: Snap the main body together gently.<br>3. Power: Plug the battery wire into the board.",
-        code: "No blocks yet! This is about the physical robot.",
-        reflection: "Why should we build MIGO slowly and carefully? How does being organized help us?",
+        title: "Level 0: The Blueprint",
+        focus: "Patience and Precision (Building Carefully)",
+        story: "The Great Blight had come. A hot, choking dust covered the once-green town. The Community Garden, the heart of the town, was slowly dying. Rion knew he had to save it. He only had one chance: build a helper bot, MIGO, to bring the water. In his fear, Rion started to build too fast, like a storm. The plastic pieces snapped in his hands. A critical wire broke! Rion felt a hot, sad knot in his belly. He stopped. He knew the garden would die if he broke another piece. Rion took a deep, slow breath. He built the robot slowly, like placing precious eggs, until MIGO was perfect.",
+        materials: "Robot parts (chassis, wheels, motors), battery pack, Ultrasonic eyes, and the assembly diagram.",
+        activity: "<b>1. Sort Parts:</b> Put all the pieces on the table. Group the wheels, wires, and body parts together.<br><b>2. Build Slowly:</b> Follow the picture guide to snap the body together. Do not push too hard!<br><b>3. Check Plugs &amp; Power:</b> Make sure your sensors are plugged neatly into Plugs A, B, C, or D, then plug in the battery until it clicks.",
+        code: "<b>Explorer &amp; Inventor:</b> No blocks yet! We are building MIGO's physical body first.<br><span class='text-indigo-300'>💡 <b>Inventor Hardware Check:</b> Verify Ultrasonic is on Trig 13 / Echo 12 and your 0.96\" OLED screen is on SDA 21 / SCL 22!</span>",
+        tip: "If a piece feels stuck, stop! Don't force it or it might break. Take a deep breath, look closely at how it fits, and try again gently.",
+        questions: "<b>Q: Why should we build MIGO slowly?</b><br><span class='text-teal-300'>A: So we don't break the fragile parts! Building slowly teaches us patience, just like Rion in the story.</span><br><br><b>Q: Why do we sort the parts before building?</b><br><span class='text-teal-300'>A: To stay organized and make sure no parts are missing.</span>",
+        rubric: "Built. Safe. Neat.",
         visualSvg: `<svg viewBox="0 0 200 120" class="w-full h-full" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="blueprint-grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(20, 184, 166, 0.15)" stroke-width="0.5"/></pattern></defs><rect width="100%" height="100%" fill="none"/><rect width="100%" height="100%" fill="url(#blueprint-grid)"/><rect x="50" y="30" width="100" height="60" rx="10" fill="none" stroke="#2dd4bf" stroke-dasharray="2 2" stroke-width="1.5" /><rect x="40" y="40" width="10" height="20" rx="3" fill="none" stroke="#fbbf24" stroke-width="1.5" /><rect x="40" y="70" width="10" height="20" rx="3" fill="none" stroke="#fbbf24" stroke-width="1.5" /><rect x="150" y="40" width="10" height="20" rx="3" fill="none" stroke="#fbbf24" stroke-width="1.5" /><rect x="150" y="70" width="10" height="20" rx="3" fill="none" stroke="#fbbf24" stroke-width="1.5" /><rect x="75" y="45" width="50" height="30" rx="5" fill="none" stroke="#c084fc" stroke-width="1.5" /><circle cx="100" cy="60" r="12" fill="none" stroke="#2dd4bf" stroke-width="1" /><line x1="100" y1="15" x2="100" y2="105" stroke="rgba(245, 158, 11, 0.4)" stroke-width="0.5" stroke-dasharray="4 4" /><line x1="25" y1="60" x2="175" y2="60" stroke="rgba(245, 158, 11, 0.4)" stroke-width="0.5" stroke-dasharray="4 4" /><text x="55" y="23" fill="#2dd4bf" font-size="6" font-family="monospace">CHASSIS_V3.0</text><text x="105" y="93" fill="#fbbf24" font-size="6" font-family="monospace">ESP32_DEV_KIT</text></svg>`
       },
       {
-        title: "Level 1: The First Steps of Accountability",
-        focus: "Self-Control and Accountability",
-        story: "MIGO was alive! You grabbed the controller, shaking with excitement. 'Go, MIGO, GO!' you yelled, smashing buttons. CRASH! MIGO slammed to a stop just inches from the last seedling. The robot moved, but you were the one who almost killed the plant. You chose to become a careful pilot.",
-        activity: "1. Connect: Open the app and tap 'Connect'.<br>2. Straight Line: Use the D-Pad to drive forward and backward on a line.<br>3. Avoid Plants: Use the Joystick to steer around obstacles gently.",
-        code: "Try using the <b>D-Pad</b> for precision and the <b>Joystick</b> for smooth turns!",
-        reflection: "When the robot crashed in the story, whose fault was it? How can we be better pilots?",
+        title: "Level 1: First Steps",
+        focus: "Self-Control and Accountability (Careful Driving)",
+        story: "MIGO was alive, a shining beacon of hope. Rion grabbed the controller, shaking with excitement. The dust storm outside was getting worse. 'Go, MIGO, GO!' he yelled, smashing the buttons fast and wild. The robot zoomed across the floor like a bullet, its wheels screeching. CRASH! It slammed to a stop, just inches from the last tiny, living seedling. Rion froze. The robot had moved, but Rion was the one who almost killed the little plant. The garden's fate rested in his hands, not the robot's wheels. Rion chose to become its careful pilot, moving MIGO so slowly and gently it was like watching a feather fall.",
+        materials: "Tablet or phone with the MIGO App, masking tape on the floor, and small plastic cups (pretend they are baby plants!).",
+        activity: "<b>1. Connect (1-to-1 Pairing):</b> Turn on MIGO. Tap <b>Connect</b> on the app and pick your robot. Notice how MIGO locks onto your screen!<br><b>2. Straight Line:</b> Use the <b>D-Pad</b> buttons to drive MIGO straight down the tape line and back.<br><b>3. Gentle Turns:</b> Switch to the <b>Joystick</b>. Gently steer around the plastic cups without touching them!",
+        code: "<b>Play Tab:</b> Use the <b>D-Pad</b> for straight lines and the <b>Joystick</b> for smooth turns.<br><span class='text-indigo-300'>💡 <b>Inventor Tip:</b> Need to let a teammate pair with your robot later? Cover MIGO's Ultrasonic eyes closer than 5 cm for 5 seconds to unpair!</span>",
+        tip: "The Joystick is super sensitive! Only move your thumb a tiny bit. Pushing it all the way makes MIGO zoom too fast. Small movements = safe driving!",
+        questions: "<b>Q: When the robot crashed in the story, whose fault was it?</b><br><span class='text-teal-300'>A: It was the boy's fault because he drove too wild! We are responsible for how we control our tools.</span><br><br><b>Q: When is it best to use the D-Pad instead of the Joystick?</b><br><span class='text-teal-300'>A: D-Pad is best for driving in straight lines; Joystick is best for smooth turns around obstacles.</span>",
+        rubric: "Connected. Controlled. Gentle.",
         visualSvg: `<svg viewBox="0 0 200 120" class="w-full h-full" xmlns="http://www.w3.org/2000/svg"><path d="M 20 60 Q 90 20 150 70" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-dasharray="4 4" /><g transform="translate(18, 50) rotate(-15)"><rect x="-15" y="-10" width="30" height="20" rx="3" fill="#0f766e" stroke="#2dd4bf" stroke-width="1" /><circle cx="10" cy="-5" r="2" fill="#fbbf24" /><circle cx="10" cy="5" r="2" fill="#fbbf24" /></g><g transform="translate(160, 75)"><ellipse cx="0" cy="5" rx="12" ry="3" fill="#78350f" /><path d="M 0 5 Q -2 -15 2 -25" fill="none" stroke="#4ade80" stroke-width="2" /><path d="M 0 -12 Q -8 -16 -4 -22 Q -1 -18 0 -12" fill="#4ade80" /><path d="M 1 -18 Q 9 -22 6 -26 Q 2 -22 1 -18" fill="#4ade80" /><circle cx="0" cy="0" r="18" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="2 2" /></g><path d="M 70 85 A 15 15 0 0 0 110 85" fill="none" stroke="#fbbf24" stroke-width="1.5" /><text x="75" y="105" fill="#fbbf24" font-size="7" font-family="monospace">SMOOTH STEER</text></svg>`
       },
       {
-        title: "Level 2: The Seedling Path of Resilience",
-        focus: "Resilience and Methodical Thinking",
-        story: "The garden needed exact doses of water. Your hands shook, making mistakes. 'The human is too slow,' you thought. You wrote your first code: Move, Wait, Stop. MIGO stopped too soon! You wanted to quit, but you tried again and again, changing the numbers until it was perfect.",
-        activity: "1. Start: Use the <b>Setup</b> block.<br>2. Movement: Attach <b>Move Forward</b>.<br>3. Precision: Add a <b>Wait</b> block and change the seconds until MIGO stops exactly on the target.",
-        code: "<b>Setup</b> -> <b>Move Forward</b> -> <b>Wait (1.5) seconds</b> -> <b>Stop Moving</b>",
-        reflection: "Why do we change the number in the 'Wait' block? How did the boy in the story show he wouldn't give up?",
+        title: "Level 2: Seedling Path",
+        focus: "Resilience and Methodical Thinking (Trying Again)",
+        story: "The sickness spread, and the garden needed exact doses of water, not too much, not too little. Rion drove MIGO by hand, but his hands shook with fear, making big mistakes. 'The human is too slow,' he thought. Rion knew he needed the robot to move itself, like a trusted machine. He wrote the first code: Move, Wait, Stop. He pressed RUN. MIGO rolled out, but stopped far too soon! The target plant got no water. The ground drank the dry air. Rion wanted to throw the tablet down and quit. But he saw the dust swirling outside. He wiped the screen clean and changed the numbers. He tried again. And again. And again. He fought the bad feeling until the robot stopped exactly where it should.",
+        materials: "Tablet with the Code Tab open, a ruler or tape measure, and a piece of paper with a 'Water Spot' drawn on it.",
+        activity: "<b>1. Start Setup:</b> Drag the green <b>Setup</b> block into your workspace.<br><b>2. Move &amp; Wait:</b> Snap <b>Move Forward at speed 150</b> inside Setup. Add a <b>Wait</b> block (<code>1.5 seconds</code> in Explorer, or <code>1500 ms</code> in Inventor), then snap <b>Stop Moving</b> at the end.<br><b>3. Test &amp; Fix:</b> Press <b>Run</b> (or test in the <b>Simulator</b> first!). Did MIGO stop right on the paper? Change the Wait number and try again until it's perfect!",
+        code: "<b>Explorer:</b> Setup &rarr; Move Forward (150) &rarr; Wait (1.5 s) &rarr; Stop Moving<br><b>Inventor:</b> Setup &rarr; Move Forward (150) &rarr; Wait (1500 ms) &rarr; Stop Moving<br><span class='text-indigo-300'>🚀 <b>Inventor Challenge:</b> Open the <b>C++ Code</b> preview tab to see how your blocks become <code>moveRobot(\"F\", 150); delay(1500); stopMotors();</code>!</span>",
+        tip: "Don't be sad if MIGO misses the spot on the first try! Even real rocket scientists have to guess, test, and change their numbers. Every mistake is a clue!",
+        questions: "<b>Q: Why do we change the number inside the Wait block?</b><br><span class='text-teal-300'>A: To control how far MIGO rolls so it stops at the exact right spot!</span><br><br><b>Q: How did Rion show resilience in the story?</b><br><span class='text-teal-300'>A: He didn't quit when his code failed. He took a breath, changed the numbers, and tried again.</span>",
+        rubric: "Programmed. Measured. Accurate.",
         visualSvg: `<svg viewBox="0 0 200 120" class="w-full h-full" xmlns="http://www.w3.org/2000/svg"><line x1="140" y1="20" x2="140" y2="100" stroke="#f59e0b" stroke-width="2" stroke-dasharray="3 3" /><text x="145" y="30" fill="#f59e0b" font-size="7" font-family="monospace">TARGET</text><line x1="30" y1="60" x2="135" y2="60" stroke="#2dd4bf" stroke-width="2" /><polygon points="135,56 142,60 135,64" fill="#2dd4bf" /><g transform="translate(130, 60)"><rect x="-20" y="-12" width="20" height="24" rx="4" fill="#0f766e" stroke="#2dd4bf" stroke-width="1.5" /><circle cx="-16" cy="-14" r="3" fill="#334155" /><circle cx="-4" cy="-14" r="3" fill="#334155" /><circle cx="-16" cy="14" r="3" fill="#334155" /><circle cx="-4" cy="14" r="3" fill="#334155" /><line x1="0" y1="-8" x2="0" y2="8" stroke="#4ade80" stroke-width="2" /></g><g transform="translate(15, 20)"><rect x="0" y="0" width="45" height="12" rx="2" fill="#10b981" /><text x="4" y="8" fill="white" font-size="6" font-family="sans-serif" font-weight="bold">SETUP</text><rect x="5" y="15" width="40" height="12" rx="2" fill="#3b82f6" /><text x="9" y="23" fill="white" font-size="6" font-family="sans-serif">Move Fwd</text><rect x="5" y="30" width="40" height="12" rx="2" fill="#eab308" /><text x="9" y="38" fill="white" font-size="6" font-family="sans-serif">Wait 1.5s</text><rect x="5" y="45" width="40" height="12" rx="2" fill="#ef4444" /><text x="9" y="53" fill="white" font-size="6" font-family="sans-serif">STOP</text></g><text x="75" y="110" fill="#2dd4bf" font-size="6" font-family="monospace">Stop Precision: 100%</text></svg>`
       },
       {
-        title: "Level 3: The Shaded Grove of Empathy",
-        focus: "Empathy and Keen Observation",
-        story: "MIGO drove into a pitch-black cave where a forgotten sapling was shivering. You turned on MIGO's bright searchlight and saw the tiny plant. You felt a rush of sadness for the plant and learned MIGO was not just a tool, but your eyes for a hidden world.",
-        activity: "1. Searchlight: Use the <b>Turn Light ON</b> block.<br>2. Message: Use the <b>Say</b> block to report your findings.<br>3. Explore: Drive into a dark area, turn on the light, and 'Say' hello to the plant.",
-        code: "<b>Move</b> -> <b>Wait</b> -> <b>Stop</b> -> <b>Turn Light ON</b> -> <b>Say 'Found it!'</b>",
-        reflection: "How did MIGO help the boy find the hidden plant? Why is it important to use our tools to care for things?",
+        title: "Level 3: Shaded Grove",
+        focus: "Empathy and Observation (Using Lights, Screen & Messages)",
+        story: "The mission was simple: water the visible plants. But Rion saw a part of the garden that was always hidden in deep shadow—a small, dark cave of broken pipes. He knew something was in there, but his own eyes could not see. Rion sent MIGO into the pitch black. The robot was deaf and blind in the dark. Rion suddenly had a thought! He changed the code to turn on MIGO's bright searchlight. The light pierced the cave's darkness! There, Rion saw it: a tiny, forgotten sapling, shivering and sick. Rion felt a rush of sadness, not for the failure of his code, but for the sad plant. He learned the robot was not just a tool; it was his eyes for the hidden world.",
+        materials: "A cardboard box turned on its side to make a dark 'cave', and a small toy or paper plant hidden inside.",
+        activity: "<b>1. Turn on the Light:</b> Find the green <b>Turn Light ON</b> block (or <b>Turn Built-in LED (Pin 2) ON</b> in Inventor Mode).<br><b>2. Send a Message:</b> Find the <b>Say</b> block (or <b>Print to Monitor</b> + a <b>Text</b> block in Inventor Mode) and type <code>\"Found plant!\"</code>.<br><b>3. Cave Rescue:</b> Program MIGO to drive into the dark box, stop, turn on its light, and send the message back to your screen!",
+        code: "<b>Explorer:</b> Move Forward &rarr; Wait &rarr; Stop &rarr; Turn Light ON &rarr; Say \"Found plant!\"<br><b>Inventor:</b> Move Forward &rarr; Wait &rarr; Stop &rarr; Turn Built-in LED (Pin 2) ON &rarr; Print to Monitor \"Found plant!\"<br><span class='text-indigo-300'>🚀 <b>Inventor Challenge:</b> Use <b>Init 0.96\" OLED</b>, <b>Clear OLED</b>, <b>OLED Print \"FOUND!\"</b>, and <b>Update OLED Screen</b> so MIGO displays the rescue message on its own screen too!</span>",
+        tip: "Robots can go places humans can't! Watch the bottom Log bar on your screen to see MIGO talk back to you when it finds the hidden plant.",
+        questions: "<b>Q: How did MIGO help the boy find the hidden plant?</b><br><span class='text-teal-300'>A: MIGO went into the dark cave where the boy couldn't see and used its bright light to find the plant.</span><br><br><b>Q: Why is it important to look closely and care for hidden things?</b><br><span class='text-teal-300'>A: Because someone or something might need our help even if we can't see them right away.</span>",
+        rubric: "Lit. Printed. Combined.",
         visualSvg: `<svg viewBox="0 0 200 120" class="w-full h-full" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="light-cone" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="rgba(245, 158, 11, 0.7)" /><stop offset="100%" stop-color="rgba(245, 158, 11, 0)" /></linearGradient></defs><path d="M 0 0 C 40 15, 80 5, 120 20 C 160 5, 200 15, 200 0 L 200 120 C 160 115, 120 100, 70 110 C 30 100, 0 120, 0 120 Z" fill="#1e1b4b" opacity="0.8"/><g transform="translate(30, 60)"><rect x="-15" y="-12" width="30" height="24" rx="4" fill="#0f766e" stroke="#2dd4bf" stroke-width="1.5" /><circle cx="10" cy="-6" r="3" fill="#334155" /><circle cx="10" cy="6" r="3" fill="#334155" /><path d="M 15 -6 L 17 -4 L 17 4 L 15 6 Z" fill="#fbbf24" /></g><polygon points="45,60 160,25 160,95" fill="url(#light-cone)" /><g transform="translate(155, 65)"><ellipse cx="0" cy="8" rx="8" ry="2" fill="#451a03" /><path d="M 0 8 Q -3 -5 2 -12" fill="none" stroke="#22c55e" stroke-width="1.5" /><circle cx="2" cy="-12" r="4" fill="#ec4899" /><circle cx="2" cy="-12" r="1.5" fill="#facc15" /><path d="M -8 -8 Q -10 -8 -11 -6" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="0.5"/><path d="M 10 -15 Q 12 -15 13 -13" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="0.5"/></g><text x="75" y="105" fill="#fbbf24" font-size="7" font-family="monospace">LIGHT ON: Cave Find</text></svg>`
       },
       {
-        title: "Level 4: The Drought Response",
-        focus: "Composure Under Pressure",
-        story: "A fierce wind threatened the whole farm! Writing blocks for every plant would take a year. You felt panic. Then you remembered the 'Loop' block. MIGO became a machine of endless effort, racing up and down the rows.",
-        activity: "1. Repeat: Put your movement code inside a <b>Repeat</b> block.<br>2. Efficiency: Use <b>Loop forever</b> to make MIGO water a long row of plants without stopping.",
-        code: "<b>Loop forever</b> [ <b>Move</b> -> <b>Wait</b> -> <b>Stop</b> -> <b>Wait</b> ]",
-        reflection: "What does the 'Loop' block do for us? How did staying calm help the boy save the plants?",
+        title: "Level 4: Drought Response",
+        focus: "Staying Calm Under Pressure (Using Loops & Sensors)",
+        story: "Then came the worst day. A fierce, desert-hot wind howled through the town, making the plants wither right now. The entire farm—hundreds of plants—needed water instantly! Rion looked at his code screen. Writing blocks for every plant would take a year. Sweat dripped from his forehead. Rion felt panic, the cold dread of failure. 'I can't do it! They're all going to die!'. He closed his eyes and took a hero's deep breath. Stay calm. Think smart. He remembered the special, secret power: the 'Loop' block. He put his Move-Wait-Stop code inside the loop. MIGO became a machine of endless effort, racing up and down the rows, watering every single plant. Rion stayed calm and saved the farm, just as the sun set.",
+        materials: "A long row of paper leaves or cups lined up on the floor like a big farm.",
+        activity: "<b>1. The Long Way:</b> Try building Move-Wait-Stop 3 times in a row. See how tall and messy the code gets?<br><b>2. The Smart Way (Repeat):</b> Put just ONE Move-Wait-Stop inside a purple <b>Repeat 3 times</b> block.<br><b>3. Endless Helper:</b> Now move your blocks inside the green <b>Loop forever</b> block so MIGO waters the whole row non-stop!",
+        code: "<b>Explorer &amp; Inventor:</b> Loop forever [ Move Forward &rarr; Wait &rarr; Stop &rarr; Wait ]<br><span class='text-indigo-300'>🚀 <b>Inventor Challenge:</b> Add an <b>If (Distance from Ultrasonic &lt; 15 cm)</b> block inside <b>Loop forever</b> so MIGO automatically stops and plays a warning tone if a rock blocks the garden path!</span>",
+        tip: "When a problem looks huge and scary, don't panic! Look for a pattern that repeats, and let a Loop block do the hard work for you.",
+        questions: "<b>Q: Why is a Loop better than writing the same blocks over and over?</b><br><span class='text-teal-300'>A: It saves time, keeps your code neat, and lets the robot repeat a job forever without getting tired!</span><br><br><b>Q: How did staying calm help the boy in the story?</b><br><span class='text-teal-300'>A: Taking a deep breath helped him stop panicking and remember the smart way to solve the problem.</span>",
+        rubric: "Repeated. Looped. Calm.",
         visualSvg: `<svg viewBox="0 0 200 120" class="w-full h-full" xmlns="http://www.w3.org/2000/svg"><path d="M 100 20 A 40 40 0 1 1 99 20" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="5 3" /><polygon points="100,16 108,20 100,24" fill="#f59e0b" /><polygon points="100,96 92,100 100,104" fill="#f59e0b" /><g transform="translate(100, 60)"><path d="M 0 15 Q 0 -5 5 -15" fill="none" stroke="#22c55e" stroke-width="2" /><path d="M 5 -15 Q -4 -25 -10 -20 Q -6 -12 5 -15" fill="#22c55e" /><path d="M 5 -15 Q 14 -25 20 -20 Q 16 -12 5 -15" fill="#22c55e" /><path d="M 0 -35 C -3 -30 -5 -28 -5 -25 A 5 5 0 0 0 5 -25 C 5 -28 3 -30 0 -35 Z" fill="#38bdf8" /></g><g transform="translate(140, 60) rotate(90)"><rect x="-10" y="-8" width="20" height="16" rx="2" fill="#0f766e" stroke="#2dd4bf" stroke-width="1" /></g><text x="15" y="62" fill="#fbbf24" font-size="8" font-family="monospace">LOOP</text><text x="13" y="72" fill="#fbbf24" font-size="6" font-family="monospace">FOREVER</text><text x="65" y="110" fill="#2dd4bf" font-size="6" font-family="monospace">Drought Response Mode</text></svg>`
       },
       {
         title: "Level 5: The Harvest",
-        focus: "Groundedness and Gratitude",
-        story: "The Great Blight was over! The garden was safe. You gave MIGO a special command called 'Happy Plant.' The robot drove to the center and flashed its light. You realized your smart brain and your robot helped save the world.",
-        activity: "1. Create: Define a <b>Function</b> called 'Wink' (Light ON, Wait, Light OFF).<br>2. Use: Under <b>Setup</b>, use the <b>Call Function</b> block to run your 'Wink'.",
-        code: "<b>Define function 'Wink'</b> [ <b>Light ON</b> -> <b>Wait</b> -> <b>Light OFF</b> ] <br><b>Call function 'Wink'</b>",
-        reflection: "Why is a 'Function' block useful? What did the boy learn about his robot at the end?",
+        focus: "Gratitude and Pride (Creating Custom Functions)",
+        story: "The next morning was quiet. The Great Blight was over, and the garden was thick, green, and safe. Rion gave MIGO its final, special command. He made a secret signal code called 'Happy Plant.' The robot drove to the center, stopped, and flashed its light—a bright, fast wink. It was MIGO's way of saying, 'Mission complete.' Rion realized he had done more than play a game; he had used his smart brain and his brave robot to save the whole world outside his window.",
+        materials: "A finish line sign or a green paper centerpiece for the garden.",
+        activity: "<b>1. Teach a New Trick:</b> Drag the pink <b>Define function</b> block and name it <code>Wink</code>. Inside it, put blocks to turn the Light ON, wait, turn it OFF, wait, and turn it ON.<br><b>2. Use the Trick:</b> Drag the pink <b>Call function</b> block, type <code>Wink</code>, and snap it at the end of your <b>Setup</b> blocks.<br><b>3. Celebrate:</b> Press Run and watch MIGO drive to the center, stop, and do its special Wink celebration!",
+        code: "<b>Define function \"Wink\"</b> [ Light ON &rarr; Wait &rarr; Light OFF &rarr; Wait &rarr; Light ON ]<br><b>Setup</b> [ Move Forward &rarr; Wait &rarr; Stop &rarr; Call function \"Wink\" ]<br><span class='text-indigo-300'>🚀 <b>Inventor Challenge:</b> Add <b>Play Tone on Plug D (14) Freq 880 Hz for 200 ms</b> and <b>Set Servo on Plug D to 100%</b> inside your <code>Wink</code> function for a full victory dance!</span>",
+        tip: "Defining a function is like writing a recipe card—MIGO won't actually do the trick until you put the 'Call function' block inside Setup or Loop!",
+        questions: "<b>Q: Why do we make custom functions in coding?</b><br><span class='text-teal-300'>A: Functions let us group blocks into a named trick that we can reuse anytime with just one block!</span><br><br><b>Q: How did Rion feel at the end of the story?</b><br><span class='text-teal-300'>A: Proud and thankful! He used his brain and his robot to care for the community.</span>",
+        rubric: "Defined. Called. Complete.",
         visualSvg: `<svg viewBox="0 0 200 120" class="w-full h-full" xmlns="http://www.w3.org/2000/svg"><rect x="15" y="40" width="60" height="30" rx="4" fill="#a855f7" stroke="#c084fc" stroke-width="1.5" /><text x="22" y="58" fill="white" font-size="7" font-weight="bold" font-family="sans-serif">CALL: Wink()</text><path d="M 75 55 L 115 55" fill="none" stroke="#fbbf24" stroke-width="2" stroke-dasharray="2 2" /><polygon points="115,51 123,55 115,59" fill="#fbbf24" /><g transform="translate(150, 55)"><rect x="-18" y="-14" width="36" height="28" rx="4" fill="#0f766e" stroke="#2dd4bf" stroke-width="1.5" /><circle cx="10" cy="-6" r="4" fill="#fbbf24" /><path d="M 10 -15 L 10 -20 M 10 3 L 10 8 M 1 -6 L -4 -6 M 19 -6 L 24 -6" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" /><path d="M 4 -12 L 0 -16 M 16 -12 L 20 -16 M 4 0 L 0 4 M 16 0 L 20 4" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" /></g><text x="65" y="105" fill="#2dd4bf" font-size="7" font-family="monospace">Function Reusability</text></svg>`
+      },
+      {
+        title: "Level 6: Vision Sentinel",
+        focus: "Watchful Guardianship (MIGO Vision & ESP32-CAM AI)",
+        story: "With the garden blooming again, Rion wanted MIGO to recognize ripe fruits, follow garden paths, and wave hello when friends visited! He attached the MIGO ESP32-CAM eye to the robot. At first, MIGO didn't know what to look for. Rion calmly taught MIGO's Vision system how to spot bright colors, human faces, and hand gestures. Now MIGO could see the garden in living color and steer smoothly toward any seedling marker all by itself!",
+        materials: "Your MIGO ESP32-CAM (or device Webcam/Phone Camera) and a bright colored ball, cup, or leaf.",
+        activity: "<b>1. Open MIGO Vision:</b> Tap the <b>Vision 👁️</b> button. Connect your <b>ESP32-CAM</b> (tap <b>Scan</b> once on the same Wi-Fi!) or choose <b>Webcam (Local)</b>.<br><b>2. Pick a Color:</b> Select <b>Color Tracker</b> mode and tap directly on your colored object in the video screen to lock onto its color!<br><b>3. Code the Chase:</b> In the Code tab, put <b>Set Vision Mode to Color Tracker</b> in Setup. Inside <b>Loop forever</b>, snap: <b>If (Vision Target Locked?)</b> &rarr; <b>Steer Toward Vision Target at speed 140</b>, else <b>Stop Moving</b>!",
+        code: "<b>Setup</b> [ Set Vision Mode to Color Tracker ]<br><b>Loop forever</b> [ If (Vision Target Locked?) do: Steer Toward Vision Target (140) else: Stop Moving ]<br><span class='text-indigo-300'>🚀 <b>Inventor Challenge:</b> Switch Vision Mode to <b>Gesture Control</b> and use <b>Vision Finger Count (0-5)</b> so holding up 5 fingers makes MIGO spin happy circles!</span>",
+        tip: "Setting up a brand-new ESP32-CAM? Connect your phone to 'MIGO_CAM_DIRECT' Wi-Fi, pick your home/hotspot Wi-Fi on the setup page, copy the IP shown, and tap Scan in MIGO Vision!",
+        questions: "<b>Q: How is the MIGO Vision camera different from the Ultrasonic eyes?</b><br><span class='text-teal-300'>A: Ultrasonic only measures distance with sound, while MIGO Vision sees colors, faces, hand fingers, and objects!</span><br><br><b>Q: Why should MIGO stop when Vision Target Locked is false?</b><br><span class='text-teal-300'>A: So MIGO stays safe and doesn't wander off when the target is out of sight!</span>",
+        rubric: "Connected. Locked. Tracked.",
+        visualSvg: `<svg viewBox="0 0 200 120" class="w-full h-full" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="reticle-glow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="rgba(20, 184, 166, 0.4)" /><stop offset="100%" stop-color="rgba(20, 184, 166, 0)" /></radialGradient></defs><rect x="5" y="5" width="190" height="110" rx="8" fill="#090d16" stroke="rgba(20, 184, 166, 0.4)" stroke-width="1.5" /><line x1="15" y1="60" x2="185" y2="60" stroke="rgba(20, 184, 166, 0.2)" stroke-dasharray="2 2" /><line x1="100" y1="15" x2="100" y2="105" stroke="rgba(20, 184, 166, 0.2)" stroke-dasharray="2 2" /><circle cx="125" cy="55" r="16" fill="url(#reticle-glow)" /><circle cx="125" cy="55" r="10" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.5" /><circle cx="125" cy="55" r="4" fill="#10b981" /><rect x="110" y="40" width="30" height="30" rx="3" fill="none" stroke="#14b8a6" stroke-width="1.5" /><line x1="105" y1="55" x2="110" y2="55" stroke="#14b8a6" stroke-width="2" /><line x1="140" y1="55" x2="145" y2="55" stroke="#14b8a6" stroke-width="2" /><line x1="125" y1="35" x2="125" y2="40" stroke="#14b8a6" stroke-width="2" /><line x1="125" y1="70" x2="125" y2="75" stroke="#14b8a6" stroke-width="2" /><path d="M 60 90 Q 95 85 118 70" fill="none" stroke="#38bdf8" stroke-width="2" stroke-dasharray="3 2" /><polygon points="120,68 113,67 117,75" fill="#38bdf8" /><g transform="translate(45, 90)"><rect x="-14" y="-10" width="28" height="20" rx="4" fill="#0f766e" stroke="#2dd4bf" stroke-width="1.2" /><circle cx="-10" cy="-11" r="2.5" fill="#334155" /><circle cx="10" cy="-11" r="2.5" fill="#334155" /><circle cx="-10" cy="11" r="2.5" fill="#334155" /><circle cx="10" cy="11" r="2.5" fill="#334155" /><circle cx="7" cy="0" r="3" fill="#38bdf8" /></g><text x="12" y="18" fill="#14b8a6" font-size="6" font-family="monospace" font-weight="bold">MIGO VISION AI</text><text x="12" y="27" fill="#fbbf24" font-size="6" font-family="monospace">LOCK: COLOR [HSV]</text><text x="110" y="80" fill="#4ade80" font-size="6" font-family="monospace">TARGET LOCKED</text><text x="50" y="112" fill="#2dd4bf" font-size="6.5" font-family="monospace" font-weight="bold">CLOSED-LOOP VISION AUTONOMY</text></svg>`
+      },
+      {
+        title: "Level 7: Voice of AIONA",
+        focus: "Wisdom and Teamwork (Super AIONA AI & Desk Companion)",
+        story: "Even a great Caretaker sometimes faces mysteries too big to solve alone: 'Why are these leaves turning yellow? How do I wire my new sensor?' Rion awakened Super AIONA, MIGO's kind AI companion! By showing AIONA a photo of a struggling leaf and speaking into the microphone, AIONA explained how to help the plant and even helped Rion debug his code blocks. MIGO was no longer just a machine—it was a wise, friendly partner!",
+        materials: "Internet connection, Gemini API key saved in Settings ⚙️, microphone, and a plant leaf or circuit to photograph.",
+        activity: "<b>1. Chat &amp; Ask for Help:</b> Open the <b>Super AIONA</b> panel and ask: <i>\"How can I make MIGO avoid walls using the Ultrasonic sensor?\"</i><br><b>2. Snap a Photo 📷:</b> Tap the <b>Photo / Paperclip</b> button in AIONA's chat to upload a picture of a plant or your robot wiring for AIONA to check!<br><b>3. Desk Companion Mode 🐾:</b> Turn on <b>Desk Companion</b> and watch MIGO look around, lock eyes with your face, and chirp happily!",
+        code: "<b>Face Recognition Greeting:</b><br>Loop forever [ If (Is Person \"Rion\" in view?) do: Say \"Hello Caretaker!\" ]<br><span class='text-indigo-300'>🚀 <b>Inventor Challenge:</b> Ask Super AIONA to review your C++ code and suggest how to display Ultrasonic distance live on your 0.96\" OLED screen!</span>",
+        tip: "Remember: You are always the pilot in charge! If MIGO is moving during an AI command and you want it to stop right away, tap the red Abort / Stop button.",
+        questions: "<b>Q: How can Super AIONA help you when your code blocks aren't working right?</b><br><span class='text-teal-300'>A: You can ask AIONA what is wrong, and she will explain how to fix your blocks step by step!</span><br><br><b>Q: Why is there always a red Abort button when using AI?</b><br><span class='text-teal-300'>A: Because the human Caretaker is always responsible for keeping the robot safe!</span>",
+        rubric: "Spoken. Inspected. Wise.",
+        visualSvg: `<svg viewBox="0 0 200 120" class="w-full h-full" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="ai-glow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="rgba(168, 85, 247, 0.4)" /><stop offset="100%" stop-color="rgba(168, 85, 247, 0)" /></radialGradient></defs><rect width="100%" height="100%" fill="none"/><circle cx="100" cy="55" r="45" fill="url(#ai-glow)" /><g transform="translate(100, 52)"><polygon points="0,-22 18,-8 18,12 0,22 -18,12 -18,-8" fill="#1e1b4b" stroke="#a855f7" stroke-width="1.8" /><polygon points="0,-16 13,-6 13,8 0,16 -13,8 -13,-6" fill="#312e81" stroke="#c084fc" stroke-width="1" /><circle cx="0" cy="0" r="6" fill="#fbbf24" /><circle cx="0" cy="-22" r="2.5" fill="#38bdf8" /><circle cx="18" cy="-8" r="2.5" fill="#38bdf8" /><circle cx="18" cy="12" r="2.5" fill="#38bdf8" /><circle cx="0" cy="22" r="2.5" fill="#38bdf8" /><circle cx="-18" cy="12" r="2.5" fill="#38bdf8" /><circle cx="-18" cy="-8" r="2.5" fill="#38bdf8" /><line x1="0" y1="0" x2="0" y2="-22" stroke="#fbbf24" stroke-width="0.8" /><line x1="0" y1="0" x2="18" y2="-8" stroke="#fbbf24" stroke-width="0.8" /><line x1="0" y1="0" x2="18" y2="12" stroke="#fbbf24" stroke-width="0.8" /><line x1="0" y1="0" x2="0" y2="22" stroke="#fbbf24" stroke-width="0.8" /><line x1="0" y1="0" x2="-18" y2="12" stroke="#fbbf24" stroke-width="0.8" /><line x1="0" y1="0" x2="-18" y2="-8" stroke="#fbbf24" stroke-width="0.8" /></g><g transform="translate(30, 52)"><circle cx="0" cy="0" r="14" fill="#0f766e" stroke="#2dd4bf" stroke-width="1.2" /><path d="M -4 -6 L 4 -6 L 4 2 L -4 2 Z" fill="#2dd4bf" /><path d="M -2 2 L -2 6 L 2 6 L 2 2" fill="none" stroke="#2dd4bf" stroke-width="1.2" /><path d="M 18 -10 A 14 14 0 0 1 18 10" fill="none" stroke="#2dd4bf" stroke-width="1.5" /><path d="M 23 -16 A 22 22 0 0 1 23 16" fill="none" stroke="#2dd4bf" stroke-width="1" stroke-dasharray="2 2" /><text x="-12" y="24" fill="#2dd4bf" font-size="5.5" font-family="monospace">VOICE CHAT</text></g><g transform="translate(165, 52)"><rect x="-16" y="-14" width="32" height="24" rx="3" fill="#1e293b" stroke="#f59e0b" stroke-width="1.2" /><circle cx="-7" cy="-6" r="3" fill="#fbbf24" /><polygon points="-12,6 -4,-2 4,6" fill="#10b981" /><polygon points="0,6 6,0 12,6" fill="#059669" /><text x="-18" y="22" fill="#fbbf24" font-size="5.5" font-family="monospace">PHOTO HELP</text></g><path d="M 46 52 L 76 52" stroke="#2dd4bf" stroke-width="1" stroke-dasharray="3 2" /><path d="M 124 52 L 148 52" stroke="#fbbf24" stroke-width="1" stroke-dasharray="3 2" /><text x="42" y="105" fill="#c084fc" font-size="6.5" font-family="monospace" font-weight="bold">SUPER AIONA AI COMPANION</text></svg>`
       }
     ];
 
@@ -7624,55 +8507,83 @@
 
     function showTutorial(level) {
       const t = tutorials[level];
+      if (!t) return;
       const content = document.getElementById('tutorialContent');
+      const prevBtn = level > 0
+        ? `<button onclick="showTutorial(${level - 1})" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-amber-200 flex items-center gap-1 transition-all"><i class="ph-bold ph-arrow-left"></i> Level ${level - 1}</button>`
+        : `<span></span>`;
+      const nextBtn = level < tutorials.length - 1
+        ? `<button onclick="showTutorial(${level + 1})" class="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-xs font-bold text-black flex items-center gap-1 transition-all shadow-md">Next: Level ${level + 1} <i class="ph-bold ph-arrow-right"></i></button>`
+        : `<span class="text-xs font-bold text-emerald-400 flex items-center gap-1"><i class="ph-bold ph-check-circle"></i> All Caretaker Levels Mastered!</span>`;
 
       content.innerHTML = `
-        <div>
-          <h2 class="text-3xl font-bold text-amber-400 mb-1">${t.title}</h2>
-          <p class="text-amber-200 text-xs font-bold uppercase tracking-tighter">Focus: ${t.focus}</p>
+        <div class="border-b border-white/20 pb-3">
+          <span class="text-xs font-bold uppercase tracking-wider text-amber-400">${t.focus}</span>
+          <h2 class="text-2xl font-extrabold text-white mt-0.5">${t.title}</h2>
         </div>
         
         <div class="flex flex-col lg:flex-row gap-4 items-stretch">
-          <div class="flex-grow lg:w-3/5 bg-black/20 p-4 rounded-xl border-l-4 border-amber-500 italic text-sm flex items-center">
+          <div class="flex-grow lg:w-2/3 bg-black/25 p-4 rounded-xl border-l-4 border-amber-500 italic text-amber-100/95 text-xs md:text-sm leading-relaxed flex items-center">
             "${t.story}"
           </div>
-          <div class="w-full lg:w-72 h-40 bg-slate-950/60 border border-white/10 rounded-xl p-3 flex items-center justify-center shrink-0 shadow-inner">
+          <div class="w-full lg:w-64 h-40 bg-black/40 border border-white/10 rounded-xl p-2 flex items-center justify-center shrink-0 shadow-inner">
             ${t.visualSvg}
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="bg-teal-900/40 p-4 rounded-xl border border-white/5">
-            <h4 class="font-bold text-amber-400 mb-2 flex items-center gap-2"><i class="ph ph-list-numbers"></i> Activity</h4>
-            <p class="text-xs leading-relaxed">${t.activity}</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          <div class="bg-white/5 p-3.5 rounded-xl border border-white/10">
+            <h4 class="font-bold text-amber-300 text-xs uppercase mb-1 flex items-center gap-1.5"><i class="ph-bold ph-package"></i> What You Need</h4>
+            <p class="text-xs text-white/90 leading-relaxed">${t.materials}</p>
           </div>
-          <div class="bg-teal-900/40 p-4 rounded-xl border border-white/5">
-            <h4 class="font-bold text-teal-400 mb-2 flex items-center gap-2"><i class="ph ph-code"></i> Block Hint</h4>
-            <p class="text-xs font-mono text-teal-200">${t.code}</p>
+          <div class="bg-white/5 p-3.5 rounded-xl border border-white/10">
+            <h4 class="font-bold text-teal-300 text-xs uppercase mb-1 flex items-center gap-1.5"><i class="ph-bold ph-lightbulb"></i> Caretaker Tip</h4>
+            <p class="text-xs text-white/90 leading-relaxed">${t.tip}</p>
           </div>
         </div>
 
-        <div class="bg-amber-500/10 p-4 rounded-xl border border-amber-500/30">
-          <h4 class="font-bold text-amber-500 mb-2 flex items-center gap-2"><i class="ph ph-chats-circle"></i> Reflect</h4>
-          <p class="text-xs italic text-amber-100">${t.reflection}</p>
+        <div class="space-y-2 pt-1">
+          <h4 class="font-bold text-sky-300 text-sm flex items-center gap-1.5"><i class="ph-bold ph-play-circle text-base"></i> Step-by-Step Activity</h4>
+          <p class="text-xs md:text-sm bg-black/30 p-3.5 rounded-xl border border-white/10 leading-relaxed">${t.activity}</p>
+        </div>
+
+        <div class="space-y-2 pt-1">
+          <h4 class="font-bold text-purple-300 text-sm flex items-center gap-1.5"><i class="ph-bold ph-puzzle-piece text-base"></i> Block Recipe (Explorer &amp; Inventor Mode)</h4>
+          <div class="text-xs font-mono bg-black/40 p-3.5 rounded-xl border border-purple-500/30 text-purple-200 leading-relaxed">${t.code}</div>
+        </div>
+
+        <div class="space-y-2 pt-1">
+          <h4 class="font-bold text-pink-300 text-sm flex items-center gap-1.5"><i class="ph-bold ph-question text-base"></i> Think About It (Questions &amp; Answers)</h4>
+          <div class="text-xs bg-black/30 p-3.5 rounded-xl border border-pink-500/20 leading-relaxed">${t.questions}</div>
+        </div>
+
+        <div class="pt-3 flex items-center justify-between border-t border-white/10 text-xs">
+          ${prevBtn}
+          <span class="text-white/50 hidden sm:inline">Goal: <strong class="text-amber-400 uppercase tracking-widest">${t.rubric}</strong></span>
+          ${nextBtn}
         </div>
       `;
+      content.scrollTop = 0;
 
+      // Update Desktop Nav Buttons
       document.querySelectorAll('.tut-nav-btn').forEach(btn => {
         if (btn.getAttribute('data-level') == level) {
           btn.classList.add('bg-amber-500', 'text-black', 'font-bold');
+          btn.classList.remove('hover:bg-white/10');
         } else {
           btn.classList.remove('bg-amber-500', 'text-black', 'font-bold');
+          btn.classList.add('hover:bg-white/10');
         }
       });
 
+      // Update Mobile Nav Buttons
       document.querySelectorAll('.tut-nav-btn-mobile').forEach(btn => {
         if (btn.getAttribute('data-level') == level) {
           btn.classList.add('bg-amber-500', 'text-black', 'font-bold');
-          btn.classList.remove('bg-white/5', 'text-white/80');
+          btn.classList.remove('bg-white/5');
         } else {
           btn.classList.remove('bg-amber-500', 'text-black', 'font-bold');
-          btn.classList.add('bg-white/5', 'text-white/80');
+          btn.classList.add('bg-white/5');
         }
       });
     }
